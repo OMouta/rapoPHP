@@ -1,0 +1,14 @@
+{
+    "name": "rapo/framework",
+    "description": "A cool and good simple PHP framework.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Rapo\\": "rapo/"
+        }
+    },
+    "require": {
+        "php": ">=8.0"
+    }
+}
