@@ -9,24 +9,34 @@ class Page extends Component
 {
     private $features = [
         [
-            'slug' => 'directory-routing',
-            'title' => '📁 Directory Routing',
-            'desc' => 'Clean URLs based on your folder structure without any manual route definitions.'
+            'slug' => 'file-based-routing',
+            'title' => '🛣️ File-based Routing',
+            'desc' => 'Zero-config routing where folders map to URLs, supporting dynamic segments and nested layouts.'
+        ],
+        [
+            'slug' => 'component-centric-ui',
+            'title' => '🍱 Component-Centric UI',
+            'desc' => 'Pages are PHP components with JSX-style syntax and built-in hooks for a modern DX.'
         ],
         [
             'slug' => 'rapo-live',
             'title' => '⚡ Rapo-Live',
-            'desc' => 'Interactive components that update in real-time without writing a single line of JavaScript.'
+            'desc' => 'Livewire-style server-side reactivity for interactive components without writing JavaScript.'
         ],
         [
-            'slug' => 'typesafe-ui',
-            'title' => '🏗 Typesafe UI',
-            'desc' => 'Build complex UIs using standard PHP classes with full IDE support and type safety.'
+            'slug' => 'performance-dx',
+            'title' => '🚀 Performance & DX',
+            'desc' => 'Built-in Image optimization, ISR, Caching, and a modern CLI for fast development.'
         ],
         [
-            'slug' => 'nested-layouts',
-            'title' => '🪆 Nested Layouts',
-            'desc' => 'Automatically inherit UI structures across different sections of your application.'
+            'slug' => 'modern-data-auth',
+            'title' => '💾 Modern Data & Auth',
+            'desc' => 'Fluent Active Record ORM, automatic migrations, and full auth scaffolding in seconds.'
+        ],
+        [
+            'slug' => 'functional-hooks',
+            'title' => '🪝 Functional Hooks',
+            'desc' => 'Use useRouter, useHead, useState, and useForm to manage application state and metadata.'
         ]
     ];
 

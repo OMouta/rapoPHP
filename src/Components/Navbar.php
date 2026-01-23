@@ -14,6 +14,8 @@ class Navbar extends Component
                 component(Link::class, ['href' => '/'], 'RapoPHP')
             ]),
             h('div', ['class' => 'flex space-x-6 items-center'], [
+                component(Link::class, ['href' => '/features', 'class' => 'hover:text-sky-400'], 'Features'),
+                component(Link::class, ['href' => '/examples', 'class' => 'hover:text-sky-400'], 'Examples'),
                 component(Link::class, ['href' => '/blog/hello-world', 'class' => 'hover:text-sky-400'], 'Blog'),
                 component(Link::class, ['href' => '/about', 'class' => 'hover:text-sky-400'], 'About'),
                 component(Link::class, ['href' => '/login', 'class' => 'bg-sky-600 px-4 py-2 rounded hover:bg-sky-500 transition'], 'Login')

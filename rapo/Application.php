@@ -249,11 +249,12 @@ class Application {
         error_log($e->getMessage());
         $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
         $isSpa = $request->getHeader('X-Rapo-Spa') === 'true';
+        $router = $this->store->get('router');
 
         // Check for App\Pages\Error component or 404
-        $pageClass = 'App\\Pages\\Error';
-        if ($code === 404 && class_exists('App\\Pages\\NotFound')) {
-            $pageClass = 'App\\Pages\\NotFound';
+        $pageClass = $router->getPagesNamespace() . '\\Error';
+        if ($code === 404 && class_exists($router->getPagesNamespace() . '\\NotFound')) {
+            $pageClass = $router->getPagesNamespace() . '\\NotFound';
         }
 
         if (class_exists($pageClass)) {
@@ -271,7 +272,11 @@ class Application {
             } else {
                 // Wrap in layouts if not a full HTML page
                 if (!str_contains($content, '<html')) {
-                    $content = $this->applyNestedLayouts($content, ['is_page' => true, 'handler' => $pageClass], $request);
+                    $content = $this->applyNestedLayouts($content, [
+                        'is_page' => true, 
+                        'handler' => $pageClass,
+                        'hierarchy' => [$router->getPagesNamespace()]
+                    ], $request);
                 }
             }
             

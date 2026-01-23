@@ -158,12 +158,14 @@ abstract class Component {
         $scriptName = $_SERVER['SCRIPT_NAME']; 
         $baseUrl = str_replace('\\', '/', dirname($scriptName));
         $liveUrl = rtrim($baseUrl, '/') . '/_rapo/live';
+        $csrfToken = csrf_token();
 
         return <<<HTML
 <script>
 if (!window.Rapo) {
     window.Rapo = {
         liveUrl: '{$liveUrl}',
+        csrfToken: '{$csrfToken}',
         call: async (el, action, extra = {}) => {
             const root = el.closest('[data-rapo-component]');
             const component = root.getAttribute('data-rapo-component');
@@ -195,6 +197,9 @@ if (!window.Rapo) {
             try {
                 const response = await fetch(window.Rapo.liveUrl, {
                     method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': window.Rapo.csrfToken
+                    },
                     body: formData
                 });
 
@@ -323,19 +328,6 @@ if (!window.Rapo) {
                 state_key: stateKey, 
                 state_value: trigger.value 
             });
-        }
-    });
-
-    document.addEventListener('submit', (e) => {
-        const trigger = e.target.closest('[rapo-submit]');
-        if (trigger) {
-            e.preventDefault();
-            const action = trigger.getAttribute('rapo-submit');
-            const formData = new FormData(trigger);
-            const data = {};
-            formData.forEach((value, key) => data[key] = value);
-            
-            window.Rapo.call(trigger, action, { form_data: JSON.stringify(data) });
         }
     });
 }
