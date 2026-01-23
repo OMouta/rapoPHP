@@ -12,7 +12,7 @@ return [
                 // But for middleware, we can just stop execution or redirect
                 // Let's just set a flag for now
                 // Actually let's redirect
-                header("Location: " . \Rapo\url('/') . "?error=Unauthorized");
+                header("Location: " . url('/') . "?error=Unauthorized");
                 return false;
             }
         }

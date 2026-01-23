@@ -3,8 +3,6 @@
 namespace Rapo\Components;
 
 use Rapo\Component;
-use function Rapo\h;
-use function Rapo\url;
 
 class Link extends Component {
     public function view(): string {

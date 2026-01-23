@@ -9,6 +9,8 @@ class Application {
 
     public function __construct($store = null) {
         $this->store = $store ?: Store::getDefault();
+        // Add default middlewares
+        $this->use(\Rapo\Http\Middleware\VerifyCsrfToken::class);
     }
 
     public function use($middleware) {
@@ -27,7 +29,7 @@ class Application {
         $response = $this->store->get('response');
 
         try {
-            $controller = null;
+            $instance = null;
             // Global middleware.php support
             $this->loadGlobalMiddleware();
 
@@ -64,9 +66,9 @@ class Application {
 
             if ($handler instanceof \Closure) {
                 $content = call_user_func_array($handler, $params);
-            } elseif (is_array($handler)) {
-                $controllerClass = $handler[0];
-                $action = $handler[1];
+            } elseif (is_array($handler) || is_string($handler)) {
+                $controllerClass = is_array($handler) ? $handler[0] : $handler;
+                $action = is_array($handler) ? $handler[1] : 'index';
                 
                 // SEO Metadata support (Static)
                 if (method_exists($controllerClass, 'getMetadata')) {
@@ -76,34 +78,49 @@ class Application {
                     if (isset($metadata['description'])) $head->addTag("<meta name=\"description\" content=\"{$metadata['description']}\">");
                 }
 
-                $controller = new $controllerClass();
+                $instance = Container::getInstance()->resolve($controllerClass);
 
-                // Controller Middlewares (Route Protection)
-                if (property_exists($controller, 'middleware')) {
-                    foreach ((array)$controller->middleware as $m) {
-                        $mInstance = is_string($m) ? new $m() : $m;
-                        $res = is_callable($mInstance) ? $mInstance($request, $response) : $mInstance->handle($request, $response);
-                        if ($res === false) return;
+                // If it's a Component, we can just render it. If it's a Controller, we call the action.
+                if ($instance instanceof \Rapo\Component) {
+                    $instance->props = array_merge($instance->props ?? [], $params);
+                    
+                    // Server-side Data Fetching (getServerSideProps)
+                    if (method_exists($instance, 'getServerSideProps')) {
+                        $extraProps = $instance->getServerSideProps($request, $params);
+                        $instance->props = array_merge($instance->props, $extraProps);
                     }
-                }
-
-                // Server Actions support
-                if ($method === 'POST' && $actionName = $request->getPost('_action')) {
-                    if (method_exists($controller, $actionName)) {
-                        $data = $request->getPost();
-                        unset($data['_action']);
-                        $controller->$actionName($data);
+                    
+                    $content = $instance->render();
+                } else {
+                    // Controller Middlewares (Route Protection)
+                    if (property_exists($instance, 'middleware')) {
+                        foreach ((array)$instance->middleware as $m) {
+                            $mInstance = is_string($m) ? new $m() : $m;
+                            $res = is_callable($mInstance) ? $mInstance($request, $response) : $mInstance->handle($request, $response);
+                            if ($res === false) return;
+                        }
                     }
-                }
-                
-                // Server-side Side Effects (getServerSideProps)
-                $extraProps = [];
-                if (method_exists($controller, 'getServerSideProps')) {
-                    $extraProps = $controller->getServerSideProps($request, $params);
-                    $controller->props = array_merge($controller->props, $extraProps);
-                }
 
-                $content = call_user_func_array([$controller, $action], $params);
+                    // Server Actions support
+                    if ($method === 'POST' && $actionName = $request->getPost('_action')) {
+                        if (method_exists($instance, $actionName)) {
+                            $data = $request->getPost();
+                            unset($data['_action']);
+                            $instance->$actionName($data);
+                        }
+                    }
+                    
+                    // Server-side Side Effects (getServerSideProps)
+                    $extraProps = [];
+                    if (method_exists($instance, 'getServerSideProps')) {
+                        $extraProps = $instance->getServerSideProps($request, $params);
+                        if (property_exists($instance, 'props')) {
+                            $instance->props = array_merge($instance->props, $extraProps);
+                        }
+                    }
+
+                    $content = call_user_func_array([$instance, $action], $params);
+                }
             }
 
             // Handle API responses
@@ -122,8 +139,8 @@ class Application {
             }
 
             // ISR Cache Save (Move to after layouts are applied)
-            if ($method === 'GET' && isset($controller) && property_exists($controller, 'revalidate')) {
-                $this->cachePage($uri, $content, $controller->revalidate);
+            if ($method === 'GET' && $instance && isset($instance->revalidate)) {
+                $this->cachePage($uri, $content, $instance->revalidate);
             }
 
             if ($content instanceof \Rapo\Http\Response) {
@@ -180,34 +197,16 @@ class Application {
         ]));
     }
 
-    protected function applyNestedLayouts($content, $match, $request) {
+    protected function applyNestedLayouts($content, $match, $request): string {
         $isSpa = $request->getHeader('X-Rapo-Spa') === 'true';
         $layouts = [];
+        $hierarchy = $match['hierarchy'] ?? [];
 
-        // Find nested layouts based on namespace
-        if (isset($match['is_page']) && is_array($match['handler'])) {
-            $pageClass = $match['handler'][0];
-            $pagesNS = $this->store->get('router')->getPagesNamespace();
-            
-            if (str_starts_with($pageClass, $pagesNS)) {
-                $relativeNS = ltrim(substr($pageClass, strlen($pagesNS)), '\\');
-                $parts = explode('\\', $relativeNS);
-                array_pop($parts); // Remove page class name
-                
-                // Check root pages layout
-                $layoutClass = $pagesNS . '\\Layout';
+        foreach ($hierarchy as $ns) {
+            foreach (['Layout', 'Template'] as $file) {
+                $layoutClass = $ns . '\\' . $file;
                 if (class_exists($layoutClass)) {
                     $layouts[] = $layoutClass;
-                }
-
-                // Check directory-specific layouts
-                $currentNS = $pagesNS;
-                foreach ($parts as $part) {
-                    $currentNS .= '\\' . $part;
-                    $layoutClass = $currentNS . '\\Layout';
-                    if (class_exists($layoutClass) && !in_array($layoutClass, $layouts)) {
-                        $layouts[] = $layoutClass;
-                    }
                 }
             }
         }
@@ -222,7 +221,11 @@ class Application {
         if ($isSpa && !empty($layouts)) {
             $head = $this->store->get('head');
             $this->store->get('response')->setHeader('X-Rapo-Title', $head->getTitle());
-            array_shift($layouts); // Remove the RootLayout/Global Layout
+            
+            // In Next.js App Router, the root layout usually contains <html>.
+            // When navigating in SPA mode, we typically replace only the page content.
+            // If there's at least one layout, the first one is considered the "Root"
+            array_shift($layouts); 
         }
 
         // Reverse to wrap from inside out
@@ -245,22 +248,28 @@ class Application {
         $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
         $isSpa = $request->getHeader('X-Rapo-Spa') === 'true';
 
-        // Check for App\Pages\Error component
-        if (class_exists('App\\Pages\\Error')) {
-            $errorPage = new \App\Pages\Error(['exception' => $e, 'statusCode' => $code]);
-            $content = $errorPage->index();
+        // Check for App\Pages\Error component or 404
+        $pageClass = 'App\\Pages\\Error';
+        if ($code === 404 && class_exists('App\\Pages\\NotFound')) {
+            $pageClass = 'App\\Pages\\NotFound';
+        }
+
+        if (class_exists($pageClass)) {
+            $instance = Container::getInstance()->resolve($pageClass);
+            
+            if ($instance instanceof \Rapo\Component) {
+                $instance->props = ['exception' => $e, 'statusCode' => $code];
+                $content = $instance->render();
+            } else {
+                $content = $instance->index(['exception' => $e, 'statusCode' => $code]);
+            }
             
             if ($isSpa) {
                 $response->setHeader('X-Rapo-Title', "Error $code");
             } else {
-                // Wrap in global layout if not SPA
-                if ($this->layoutClass) {
-                    $layoutClass = $this->layoutClass;
-                    $layout = new $layoutClass([
-                        'children' => $content,
-                        'title' => "Error $code"
-                    ]);
-                    $content = $layout->render();
+                // Wrap in layouts if not a full HTML page
+                if (!str_contains($content, '<html')) {
+                    $content = $this->applyNestedLayouts($content, ['is_page' => true, 'handler' => $pageClass], $request);
                 }
             }
             

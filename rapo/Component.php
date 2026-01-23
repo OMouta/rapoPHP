@@ -3,7 +3,7 @@
 namespace Rapo;
 
 abstract class Component {
-    protected $props;
+    public $props;
     protected $state = [];
     protected static $registeredAssets = [];
 
@@ -11,7 +11,9 @@ abstract class Component {
         $this->props = $props;
     }
 
-    abstract public function view(): string;
+    public function view(): string {
+        return '';
+    }
 
     protected function useAsset(string $path, string $type = 'js') {
         $fullUrl = asset($path);
@@ -28,14 +30,52 @@ abstract class Component {
 
     public function render(): string {
         $content = $this->view();
+        $runtime = $this->injectRuntime();
+
+        // If the content is a full HTML document, don't wrap it in a data-rapo-component div
+        if (str_starts_with(trim($content), '<!DOCTYPE') || str_starts_with(trim($content), '<html')) {
+            if ($runtime) {
+                // Try to inject runtime before </body>
+                if (str_contains($content, '</body>')) {
+                    return str_replace('</body>', $runtime . '</body>', $content);
+                }
+            }
+            return $content . $runtime;
+        }
+
         $class = static::class;
         $props = htmlspecialchars(json_encode($this->props));
         
-        return "<div data-rapo-component=\"{$class}\" data-rapo-props=\"{$props}\">{$content}</div>" . $this->injectRuntime();
+        return "<div data-rapo-component=\"{$class}\" data-rapo-props=\"{$props}\">{$content}</div>" . $runtime;
     }
 
-    public function __toString() {
-        return $this->render();
+    /**
+     * Head hook - manage document head
+     */
+    protected function useHead(array $config) {
+        $head = $this->useStore('head');
+        if (isset($config['title'])) $head->setTitle($config['title']);
+        if (isset($config['meta'])) {
+            foreach ($config['meta'] as $name => $content) {
+                $head->addTag("<meta name=\"$name\" content=\"$content\">");
+            }
+        }
+    }
+
+    /**
+     * Router hook - access current route and query params
+     */
+    protected function useRouter() {
+        $request = $this->useStore('request');
+        $router = $this->useStore('router');
+        
+        return (object)[
+            'push' => fn($url) => redirect($url)->send(),
+            'query' => $request->getQueryParams(),
+            'params' => $router->getParams() ?? [],
+            'pathname' => $request->getUri(),
+            'method' => $request->getMethod()
+        ];
     }
 
     /**

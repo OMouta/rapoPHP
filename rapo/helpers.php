@@ -1,6 +1,8 @@
 <?php
 
-namespace Rapo;
+/**
+ * RapoPHP Global Helpers
+ */
 
 function h(string $tag, array $props = [], ...$children): string {
     $attributes = '';
@@ -74,3 +76,43 @@ function env(string $key, $default = null) {
 function formAction(string $name): string {
     return h('input', ['type' => 'hidden', 'name' => '_action', 'value' => $name]);
 }
+
+function csrf_token(): string {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (empty($_SESSION['_token'])) {
+        $_SESSION['_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['_token'];
+}
+
+function csrf_field(): string {
+    return h('input', ['type' => 'hidden', 'name' => '_token', 'value' => csrf_token()]);
+}
+
+function session() {
+    return new \Rapo\Http\Session();
+}
+
+function redirect(string $url) {
+    return new \Rapo\Http\RedirectResponse($url);
+}
+
+function component(string $class, array $props = [], $children = null): string {
+    if (!class_exists($class)) {
+        return "<!-- Component $class not found -->";
+    }
+    $instance = \Rapo\Container::getInstance()->resolve($class);
+    if (!($instance instanceof \Rapo\Component)) {
+        return "<!-- $class is not a valid Rapo Component -->";
+    }
+    if ($children !== null) {
+        $props['children'] = $children;
+    }
+    $instance->props = array_merge($instance->props ?? [], $props);
+    return $instance->render();
+}
+
+function storage() {
+    return new \Rapo\Storage();
+}
+

@@ -22,7 +22,15 @@ class Response {
         return $this;
     }
 
-    public function json($data) {
+    public static function json($data, $statusCode = 200) {
+        $response = new self();
+        $response->setStatusCode($statusCode);
+        $response->setHeader('Content-Type', 'application/json');
+        $response->setContent(json_encode($data));
+        return $response;
+    }
+
+    public function setJson($data) {
         $this->setHeader('Content-Type', 'application/json');
         $this->setContent(json_encode($data));
         return $this;

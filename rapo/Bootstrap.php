@@ -25,6 +25,28 @@ class Bootstrap {
             });
         }
 
+        // Initialize Container with defaults
+        $container = Container::getInstance();
+        $store = Store::getDefault();
+        
+        $container->singleton(Http\Request::class, fn() => $store->get('request'));
+        $container->singleton(Http\Response::class, fn() => $store->get('response'));
+        $container->singleton(Router::class, fn() => $store->get('router'));
+        $container->singleton(Database::class, fn() => $store->get('db'));
+
+        // Auto-configure File-based Routing
+        $router = $store->get('router');
+        $pagesPath = $appPath . '/Pages';
+        $apiPath = $appPath . '/Api';
+
+        if (is_dir($pagesPath)) {
+            $router->enableFileBasedRouting($pagesPath, $appNamespace . '\\Pages');
+        }
+
+        if (is_dir($apiPath)) {
+            $router->enableApiRouting($apiPath, $appNamespace . '\\Api');
+        }
+
         return new Application();
     }
 }

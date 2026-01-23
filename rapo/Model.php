@@ -32,8 +32,19 @@ abstract class Model {
     }
 
     public static function all() {
-        $rows = static::getDb()->fetchAll("SELECT * FROM " . static::$table);
-        return array_map(fn($row) => new static($row), $rows);
+        return static::query()->get();
+    }
+
+    public static function query() {
+        return new QueryBuilder(static::getDb(), static::$table, static::class);
+    }
+
+    public static function where($column, $operator, $value = null) {
+        return static::query()->where(...func_get_args());
+    }
+
+    public static function orderBy($column, $direction = 'ASC') {
+        return static::query()->orderBy($column, $direction);
     }
 
     public function save() {
@@ -71,5 +82,21 @@ abstract class Model {
 
     public function toArray() {
         return $this->data;
+    }
+
+    public function hasMany($relatedClass, $foreignKey = null, $localKey = 'id') {
+        if ($foreignKey === null) {
+            $className = (new \ReflectionClass($this))->getShortName();
+            $foreignKey = strtolower($className) . '_id';
+        }
+        return $relatedClass::where($foreignKey, $this->$localKey);
+    }
+
+    public function belongsTo($relatedClass, $foreignKey = null, $ownerKey = 'id') {
+        if ($foreignKey === null) {
+            $className = (new \ReflectionClass($relatedClass))->getShortName();
+            $foreignKey = strtolower($className) . '_id';
+        }
+        return $relatedClass::find($this->$foreignKey);
     }
 }

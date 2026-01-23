@@ -52,22 +52,23 @@ class Router {
         // Try File-based Routing (Next.js style)
         if ($this->pagesPath) {
             $parts = explode('/', trim($uri, '/'));
+            $params = [];
             
             // Handle API Routes
             if ($this->apiPath && $parts[0] === 'api') {
                 array_shift($parts); // remove 'api'
-                if (empty($parts)) $parts = ['Index'];
+                if (empty($parts)) $parts = [];
                 
-                $result = $this->resolveFileRoute($this->apiPath, $this->apiNamespace, $parts);
+                $result = $this->recursiveMatch($this->apiPath, $this->apiNamespace, $parts, $params, true);
                 if ($result) {
                     $result['is_api'] = true;
                     return $result;
                 }
             }
 
-            if ($uri === '/') $parts = ['Index'];
+            if ($uri === '/') $parts = [];
             
-            $result = $this->resolveFileRoute($this->pagesPath, $this->pagesNamespace, $parts);
+            $result = $this->recursiveMatch($this->pagesPath, $this->pagesNamespace, $parts, $params);
             if ($result) {
                 $result['is_page'] = true;
                 return $result;
@@ -81,64 +82,92 @@ class Router {
         $currentNamespace = $baseNamespace;
         $params = [];
         $found = true;
+        
+        // Next.js convention: Folders in () are Route Groups and don't affect URL
+        // folders starting with _ are Private and opted out of routing.
+        
+        $currentPath = $basePath;
+        $segments = $parts;
+        $targetNamespace = $baseNamespace;
 
-        foreach ($parts as $part) {
-            $possibleClass = $currentNamespace . '\\' . ucfirst($part);
-            if (class_exists($possibleClass)) {
-                $currentNamespace = $possibleClass;
-            } else {
-                // Check if it's a directory
-                $relativeDir = str_replace('\\', '/', substr($currentNamespace, strlen($baseNamespace) + 1));
-                $dirPath = rtrim($basePath . '/' . $relativeDir, '/') . '/' . ucfirst($part);
-                
-                if (is_dir($dirPath)) {
-                    $currentNamespace = $possibleClass;
+        return $this->recursiveMatch($basePath, $baseNamespace, $segments, $params);
+    }
+
+    protected function recursiveMatch($dir, $ns, $segments, &$params, $isApi = false) {
+        if (empty($segments)) {
+            // Check for Page.php or Index.php (or Route.php for API)
+            $files = $isApi ? ['Route'] : ['Page', 'Index'];
+            foreach ($files as $file) {
+                $class = $ns . '\\' . $file;
+                if (class_exists($class)) {
+                    return [
+                        'handler' => [$class, 'index'],
+                        'params' => $params,
+                        'hierarchy' => [$ns]
+                    ];
+                }
+            }
+            return null;
+        }
+
+        $segment = array_shift($segments);
+        $found = null;
+
+        if (is_dir($dir)) {
+            $items = scandir($dir);
+            
+            // 1. Try exact match folder
+            foreach ($items as $item) {
+                if ($item === '.' || $item === '..') continue;
+                if (str_starts_with($item, '_')) continue; // Private folder
+
+                // Handle Route Groups (marketing) -> URL remains /
+                if (preg_match('/^\((.+)\)$/', $item)) {
+                    // Dive into group but keep same segment for matching
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, array_merge([$segment], $segments), $params, $isApi);
+                    if ($res) {
+                        array_unshift($res['hierarchy'], $ns);
+                        return $res;
+                    }
                     continue;
                 }
 
-                // Try to find a dynamic segment (e.g. _Id)
-                $dir = $basePath . '/' . $relativeDir;
-                $dir = rtrim($dir, '/');
+                if (strtolower($item) === strtolower($segment) && is_dir($dir . '/' . $item)) {
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, $segments, $params, $isApi);
+                    if ($res) {
+                        array_unshift($res['hierarchy'], $ns);
+                        return $res;
+                    }
+                }
+            }
+
+            // 2. Try dynamic segments [slug] or [...slug]
+            foreach ($items as $item) {
+                if ($item === '.' || $item === '..') continue;
                 
-                $dynamicClass = null;
-                if (is_dir($dir)) {
-                    $files = scandir($dir);
-                    foreach ($files as $file) {
-                        if (str_starts_with($file, '_') && str_ends_with($file, '.php')) {
-                            $paramName = strtolower(substr($file, 1, -4));
-                            $dynamicClass = $currentNamespace . '\\' . substr($file, 0, -4);
-                            $params[$paramName] = $part;
-                            break;
-                        }
+                // Catch-all [...slug]
+                if (preg_match('/^\[\.\.\.(.+)\]$/', $item, $m) && is_dir($dir . '/' . $item)) {
+                    $paramName = $m[1];
+                    $params[$paramName] = array_merge([$segment], $segments);
+                    // Match Page.php inside the catch-all folder
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, [], $params, $isApi);
+                    if ($res) {
+                        array_unshift($res['hierarchy'], $ns);
+                        return $res;
                     }
                 }
 
-                if ($dynamicClass && class_exists($dynamicClass)) {
-                    $currentNamespace = $dynamicClass;
-                } else {
-                    $found = false;
-                    break;
+                // Single segment [slug]
+                if (preg_match('/^\[(.+)\]$/', $item, $m) && is_dir($dir . '/' . $item)) {
+                    $paramName = $m[1];
+                    $params[$paramName] = $segment;
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, $segments, $params, $isApi);
+                    if ($res) {
+                        array_unshift($res['hierarchy'], $ns);
+                        return $res;
+                    }
                 }
             }
-        }
-
-        if ($found) {
-            // If the current result is not a class, try appending \Index
-            if (!class_exists($currentNamespace)) {
-                $indexClass = $currentNamespace . '\\Index';
-                if (class_exists($indexClass)) {
-                    $currentNamespace = $indexClass;
-                } else {
-                    $found = false;
-                }
-            }
-        }
-
-        if ($found && class_exists($currentNamespace)) {
-            return [
-                'handler' => [$currentNamespace, 'index'],
-                'params' => $params
-            ];
         }
 
         return null;

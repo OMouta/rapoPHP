@@ -38,4 +38,17 @@ class Request {
         $name = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
         return $_SERVER[$name] ?? null;
     }
+
+    public function validate(array $rules) {
+        $validator = \Rapo\Validator::make($this->getPost(), $rules);
+        if ($validator->fails()) {
+            if (session_status() === PHP_SESSION_NONE) session_start();
+            $_SESSION['_flash']['errors'] = $validator->errors();
+            $_SESSION['_flash']['old'] = $this->getPost();
+            
+            header("Location: " . ($_SERVER['HTTP_REFERER'] ?? '/'));
+            exit;
+        }
+        return array_intersect_key($this->getPost(), $rules);
+    }
 }
