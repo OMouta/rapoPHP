@@ -5,12 +5,26 @@ namespace Rapo;
 abstract class Component {
     protected $props;
     protected $state = [];
+    protected static $registeredAssets = [];
 
     public function __construct(array $props = []) {
         $this->props = $props;
     }
 
     abstract public function view(): string;
+
+    protected function useAsset(string $path, string $type = 'js') {
+        $fullUrl = asset($path);
+        if (!isset(self::$registeredAssets[$type])) self::$registeredAssets[$type] = [];
+        if (!in_array($fullUrl, self::$registeredAssets[$type])) {
+            self::$registeredAssets[$type][] = $fullUrl;
+        }
+    }
+
+    public static function getRegisteredAssets(string $type = null) {
+        if ($type) return self::$registeredAssets[$type] ?? [];
+        return self::$registeredAssets;
+    }
 
     public function render(): string {
         $content = $this->view();
@@ -32,6 +46,30 @@ abstract class Component {
     }
 
     /**
+     * Context hook - shares data across components
+     */
+    protected function useContext(string $name, $defaultValue = null) {
+        $store = Store::getDefault();
+        try {
+            return $store->get("context_$name");
+        } catch (\Exception $e) {
+            return $defaultValue;
+        }
+    }
+
+    protected function provideContext(string $name, $value) {
+        Store::getDefault()->setShared("context_$name", $value);
+    }
+
+    protected function setHead(array $config) {
+        $head = $this->useStore('head');
+        if (isset($config['title'])) $head->setTitle($config['title']);
+        if (isset($config['tags'])) {
+            foreach ($config['tags'] as $tag) $head->addTag($tag);
+        }
+    }
+
+    /**
      * Flash messages hook
      */
     protected function useFlash() {
@@ -45,6 +83,22 @@ abstract class Component {
             function($type, $message) {
                 $_SESSION['rapo_flash'][] = ['type' => $type, 'message' => $message];
             }
+        ];
+    }
+
+    /**
+     * Form handling hook
+     */
+    protected function useForm(array $initialData = []) {
+        [$data, $setData] = $this->useState('form_data', $initialData);
+        [$errors, $setErrors] = $this->useState('form_errors', []);
+
+        return [
+            'data' => $data,
+            'errors' => $errors,
+            'setData' => $setData,
+            'setErrors' => $setErrors,
+            'isValid' => empty($errors)
         ];
     }
 
@@ -75,10 +129,17 @@ if (!window.Rapo) {
             const component = root.getAttribute('data-rapo-component');
             const props = root.getAttribute('data-rapo-props');
             
+            const form = el.closest('form');
+            const dataHash = {};
+            if (form) {
+                new FormData(form).forEach((value, key) => dataHash[key] = value);
+            }
+            
             const formData = new FormData();
             formData.append('component', component);
             formData.append('action', action);
             formData.append('props', props);
+            formData.append('form_data', JSON.stringify(dataHash));
 
             // Collect all attributes from the element as extra data
             for (const attr of el.attributes) {
@@ -106,24 +167,22 @@ if (!window.Rapo) {
                     // Maintain focus and cursor position for inputs
                     const active = document.activeElement;
                     const activeId = active ? active.id : null;
+                    const activeSelector = active ? (activeId ? '#' + activeId : (active.getAttribute('rapo-input') ? '[rapo-input="' + active.getAttribute('rapo-input') + '"]' : null)) : null;
                     const start = active ? active.selectionStart : null;
                     const end = active ? active.selectionEnd : null;
                     const activeValue = active ? active.value : null;
 
                     root.replaceWith(newEl);
 
-                    if (activeId) {
-                        const newActive = document.getElementById(activeId);
+                    if (activeSelector) {
+                        const newActive = newEl.querySelector(activeSelector) || document.querySelector(activeSelector);
                         if (newActive) {
                             newActive.focus();
                             // If it's an input and we were typing, don't let the server 
                             // overwrite with an "older" partial state
                             if (activeValue !== null && newActive.value !== activeValue) {
                                 // Only overwrite if the change was intended (e.g. from an action)
-                                // otherwise keep what the user is currently typing
-                                if (!extra.state_key) {
-                                     // Action occurred, allow server to change value
-                                } else {
+                                if (extra.state_key) {
                                      newActive.value = activeValue;
                                 }
                             }
@@ -138,12 +197,60 @@ if (!window.Rapo) {
     };
 
     document.addEventListener('click', (e) => {
+        const link = e.target.closest('[rapo-link]');
+        if (link) {
+            e.preventDefault();
+            const url = link.getAttribute('rapo-link');
+            window.Rapo.navigate(url);
+            return;
+        }
+
         const trigger = e.target.closest('[rapo-click]');
         if (trigger) {
             e.preventDefault();
             window.Rapo.call(trigger, trigger.getAttribute('rapo-click'));
         }
     });
+
+    document.addEventListener('submit', (e) => {
+        const trigger = e.target.closest('[rapo-submit]');
+        if (trigger) {
+            e.preventDefault();
+            window.Rapo.call(trigger, trigger.getAttribute('rapo-submit'));
+        }
+    });
+
+    window.Rapo.navigate = async (url) => {
+        try {
+            const response = await fetch(url, { headers: { 'X-Rapo-Spa': 'true' } });
+            const html = await response.text();
+            
+            if (response.ok || response.status === 404 || response.status === 500) {
+                const title = response.headers.get('X-Rapo-Title');
+                if (title) document.title = title;
+
+                const main = document.querySelector('main');
+                if (main) {
+                    main.innerHTML = html;
+                    // Scroll to top
+                    window.scrollTo(0, 0);
+                    // Update URL
+                    window.history.pushState({}, '', url);
+                } else {
+                    // Fallback to full reload if no <main> found
+                    window.location.href = url;
+                }
+            } else {
+                window.location.href = url;
+            }
+        } catch (e) {
+            window.location.href = url; 
+        }
+    };
+
+    window.onpopstate = () => {
+        window.location.reload(); // Simple for now
+    };
 
     let inputDebounce;
     document.addEventListener('input', (e) => {
@@ -152,9 +259,17 @@ if (!window.Rapo) {
             const stateKey = trigger.getAttribute('rapo-input');
             clearTimeout(inputDebounce);
             inputDebounce = setTimeout(() => {
+                // Collect all current form data to prevent other inputs from being wiped
+                const form = trigger.closest('form');
+                const dataHash = {};
+                if (form) {
+                    new FormData(form).forEach((value, key) => dataHash[key] = value);
+                }
+
                 window.Rapo.call(trigger, 'syncState', { 
                     state_key: stateKey, 
-                    state_value: trigger.value 
+                    state_value: trigger.value,
+                    form_data: JSON.stringify(dataHash)
                 });
             }, 250); 
         }
@@ -191,14 +306,26 @@ HTML;
     /**
      * Internal method to sync state from client
      */
-    public function syncState() {
+    public function syncState($data = []) {
+        // Update state from form data if provided to keep all inputs in sync
+        foreach ($data as $key => $value) {
+            $this->useStoreState($key, $value);
+        }
+
         $key = $_POST['state_key'] ?? null;
         $value = $_POST['state_value'] ?? null;
         if ($key !== null) {
-            $this->useState($key, $value);
-            // Ensure the local component state is also updated for the current request
-            $_SESSION['rapo_state'][static::class][$key] = $value;
+            $this->useStoreState($key, $value);
         }
+    }
+
+    /**
+     * Helper to update both local state and session state
+     */
+    private function useStoreState($key, $value) {
+        $this->state[$key] = $value;
+        if (session_status() === PHP_SESSION_NONE) session_start();
+        $_SESSION['rapo_state'][static::class][$key] = $value;
     }
 
     /**

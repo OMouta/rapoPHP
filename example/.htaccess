@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /rapoPHP-framework/example/
+    
+    # Handle Live Updates (AJAX) - ensure they go to index.php
+    # They usually have ?rapo_component=... or our JS sends them to the current URL
+    
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>

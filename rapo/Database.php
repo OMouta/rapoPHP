@@ -12,7 +12,10 @@ class Database {
         
         if ($driver === 'sqlite') {
             $path = $config['path'] ?? ':memory:';
-            $this->pdo = new PDO("sqlite:$path");
+            $this->pdo = new PDO("sqlite:$path", null, null, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
         } else {
             $host = $config['host'] ?? 'localhost';
             $db   = $config['db'] ?? 'test';
