@@ -4,7 +4,19 @@ namespace Rapo;
 
 abstract class Model {
     protected static $table;
+    protected static $fields = [
+        'id' => 'INTEGER PRIMARY KEY AUTOINCREMENT',
+        'created_at' => 'DATETIME DEFAULT CURRENT_TIMESTAMP'
+    ];
     protected $data = [];
+
+    public static function getTable() {
+        return static::$table;
+    }
+
+    public static function getFields() {
+        return static::$fields;
+    }
 
     public function __construct(array $data = []) {
         $this->data = $data;

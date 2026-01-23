@@ -5,7 +5,8 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "Rapo\\": "rapo/"
+            "Rapo\\": "rapo/",
+            "App\\": "src/"
         }
     },
     "require": {
