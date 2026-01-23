@@ -119,7 +119,9 @@ class Application {
                         }
                     }
 
-                    $content = call_user_func_array([$instance, $action], $params);
+                    // For API routes, we pass the request as the first argument
+                    $args = $isApi ? array_values(array_merge([$request], $params)) : array_values($params);
+                    $content = call_user_func_array([$instance, $action], $args);
                 }
             }
 

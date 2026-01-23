@@ -29,6 +29,10 @@ class Request {
         return $_GET[$name] ?? $default;
     }
 
+    public function getQueryParams() {
+        return $_GET;
+    }
+
     public function getPost($name = null, $default = null) {
         if ($name === null) return $_POST;
         return $_POST[$name] ?? $default;

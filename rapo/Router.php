@@ -8,6 +8,7 @@ class Router {
     protected $pagesNamespace = 'App\\Pages';
     protected $apiPath = null;
     protected $apiNamespace = 'App\\Api';
+    protected $currentParams = [];
 
     public function enableFileBasedRouting($path, $namespace = 'App\\Pages') {
         $this->pagesPath = $path;
@@ -21,6 +22,10 @@ class Router {
 
     public function getPagesNamespace() {
         return $this->pagesNamespace;
+    }
+
+    public function getParams() {
+        return $this->currentParams;
     }
 
     public function add($path, $handler, $methods = ['GET']) {
@@ -42,6 +47,7 @@ class Router {
             if (preg_match($route['pattern'], $uri, $matches) && in_array($method, $route['methods'])) {
                 // Remove numeric keys from matches
                 $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
+                $this->currentParams = $params;
                 return [
                     'handler' => $route['handler'],
                     'params' => $params
@@ -56,11 +62,13 @@ class Router {
             
             // Handle API Routes
             if ($this->apiPath && $parts[0] === 'api') {
-                array_shift($parts); // remove 'api'
-                if (empty($parts)) $parts = [];
+                $apiParts = $parts;
+                array_shift($apiParts); // remove 'api'
+                if (empty($apiParts)) $apiParts = [];
                 
-                $result = $this->recursiveMatch($this->apiPath, $this->apiNamespace, $parts, $params, true);
+                $result = $this->recursiveMatch($this->apiPath, $this->apiNamespace, $apiParts, $params, true, $method);
                 if ($result) {
+                    $this->currentParams = $params;
                     $result['is_api'] = true;
                     return $result;
                 }
@@ -68,8 +76,9 @@ class Router {
 
             if ($uri === '/') $parts = [];
             
-            $result = $this->recursiveMatch($this->pagesPath, $this->pagesNamespace, $parts, $params);
+            $result = $this->recursiveMatch($this->pagesPath, $this->pagesNamespace, $parts, $params, false, $method);
             if ($result) {
+                $this->currentParams = $params;
                 $result['is_page'] = true;
                 return $result;
             }
@@ -93,18 +102,31 @@ class Router {
         return $this->recursiveMatch($basePath, $baseNamespace, $segments, $params);
     }
 
-    protected function recursiveMatch($dir, $ns, $segments, &$params, $isApi = false) {
+    protected function recursiveMatch($dir, $ns, $segments, &$params, $isApi = false, $method = 'GET') {
         if (empty($segments)) {
             // Check for Page.php or Index.php (or Route.php for API)
             $files = $isApi ? ['Route'] : ['Page', 'Index'];
             foreach ($files as $file) {
                 $class = $ns . '\\' . $file;
-                if (class_exists($class)) {
-                    return [
-                        'handler' => [$class, 'index'],
-                        'params' => $params,
-                        'hierarchy' => [$ns]
-                    ];
+                $filePath = $dir . '/' . $file . '.php';
+                
+                if (file_exists($filePath)) {
+                    require_once $filePath;
+                    if (class_exists($class)) {
+                        $action = 'index';
+                        if ($isApi) {
+                            // If it's an API route and the class has a method named after the HTTP method, use it
+                            if (method_exists($class, $method)) {
+                                $action = $method;
+                            }
+                        }
+
+                        return [
+                            'handler' => [$class, $action],
+                            'params' => $params,
+                            'hierarchy' => [$ns]
+                        ];
+                    }
                 }
             }
             return null;
@@ -121,21 +143,31 @@ class Router {
                 if ($item === '.' || $item === '..') continue;
                 if (str_starts_with($item, '_')) continue; // Private folder
 
-                // Handle Route Groups (marketing) -> URL remains /
-                if (preg_match('/^\((.+)\)$/', $item)) {
-                    // Dive into group but keep same segment for matching
-                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, array_merge([$segment], $segments), $params, $isApi);
+                // Next.js convention: Folders in () are Route Groups and don't affect URL
+                $isGroup = preg_match('/^\((.+)\)$/', $item);
+                $isDynamic = preg_match('/^\[(.+)\]$/', $item);
+                
+                // If it's a group, we stay on the same segments but dive into the folder
+                if ($isGroup) {
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns, array_merge([$segment], $segments), $params, $isApi, $method);
                     if ($res) {
-                        array_unshift($res['hierarchy'], $ns);
+                        // Avoid duplicating the same namespace in hierarchy (common with route groups)
+                        if (!in_array($ns, $res['hierarchy'])) {
+                            array_unshift($res['hierarchy'], $ns);
+                        }
                         return $res;
                     }
                     continue;
                 }
 
+                // If it's an exact match of the segment
                 if (strtolower($item) === strtolower($segment) && is_dir($dir . '/' . $item)) {
-                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, $segments, $params, $isApi);
+                    $nextNs = $ns . '\\' . $item;
+                    $res = $this->recursiveMatch($dir . '/' . $item, $nextNs, $segments, $params, $isApi, $method);
                     if ($res) {
-                        array_unshift($res['hierarchy'], $ns);
+                        if (!in_array($ns, $res['hierarchy'])) {
+                            array_unshift($res['hierarchy'], $ns);
+                        }
                         return $res;
                     }
                 }
@@ -149,10 +181,12 @@ class Router {
                 if (preg_match('/^\[\.\.\.(.+)\]$/', $item, $m) && is_dir($dir . '/' . $item)) {
                     $paramName = $m[1];
                     $params[$paramName] = array_merge([$segment], $segments);
-                    // Match Page.php inside the catch-all folder
-                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, [], $params, $isApi);
+                    // Match Page.php inside the catch-all folder, namespace doesn't include the [slug] folder
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns, [], $params, $isApi, $method);
                     if ($res) {
-                        array_unshift($res['hierarchy'], $ns);
+                        if (!in_array($ns, $res['hierarchy'])) {
+                            array_unshift($res['hierarchy'], $ns);
+                        }
                         return $res;
                     }
                 }
@@ -161,9 +195,12 @@ class Router {
                 if (preg_match('/^\[(.+)\]$/', $item, $m) && is_dir($dir . '/' . $item)) {
                     $paramName = $m[1];
                     $params[$paramName] = $segment;
-                    $res = $this->recursiveMatch($dir . '/' . $item, $ns . '\\' . $item, $segments, $params, $isApi);
+                    // Namespace doesn't include the [slug] folder
+                    $res = $this->recursiveMatch($dir . '/' . $item, $ns, $segments, $params, $isApi, $method);
                     if ($res) {
-                        array_unshift($res['hierarchy'], $ns);
+                        if (!in_array($ns, $res['hierarchy'])) {
+                            array_unshift($res['hierarchy'], $ns);
+                        }
                         return $res;
                     }
                 }
@@ -172,4 +209,5 @@ class Router {
 
         return null;
     }
+
 }
