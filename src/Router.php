@@ -111,27 +111,43 @@ class Router {
         if (empty($segments)) {
             // Check for Page.php or Index.php (or Route.php for API)
             $files = $isApi ? ['Route'] : ['Page', 'Index'];
+            $extensions = $isApi ? ['.php'] : ['.php', '.md'];
+
             foreach ($files as $file) {
-                $class = $ns . '\\' . $file;
-                $filePath = $dir . '/' . $file . '.php';
-                
-                if (file_exists($filePath)) {
-                    require_once $filePath;
-                    if (class_exists($class)) {
-                        $action = 'index';
-                        if ($isApi) {
-                            // If it's an API route and the class has a method named after the HTTP method, use it
-                            if (method_exists($class, $method)) {
-                                $action = $method;
-                            }
+                foreach ($extensions as $ext) {
+                    $class = $ns . '\\' . $file;
+                    $filePath = $dir . '/' . $file . $ext;
+                    
+                    if (file_exists($filePath)) {
+                        if ($ext === '.md') {
+                            return [
+                                'handler' => 'markdown',
+                                'params' => $params,
+                                'hierarchy' => [$ns],
+                                'paths' => [$dir],
+                                'markdown_file' => $filePath,
+                                'loading' => $loadingClass ? [$loadingClass] : []
+                            ];
                         }
 
-                        return [
-                            'handler' => [$class, $action],
-                            'params' => $params,
-                            'hierarchy' => [$ns],
-                            'loading' => $loadingClass ? [$loadingClass] : []
-                        ];
+                        require_once $filePath;
+                        if (class_exists($class)) {
+                            $action = 'index';
+                            if ($isApi) {
+                                // If it's an API route and the class has a method named after the HTTP method, use it
+                                if (method_exists($class, $method)) {
+                                    $action = $method;
+                                }
+                            }
+
+                            return [
+                                'handler' => [$class, $action],
+                                'params' => $params,
+                                'hierarchy' => [$ns],
+                                'paths' => [$dir],
+                                'loading' => $loadingClass ? [$loadingClass] : []
+                            ];
+                        }
                     }
                 }
             }
@@ -159,6 +175,7 @@ class Router {
                         if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
+                            array_unshift($res['paths'], $dir . '/' . $item);
                         }
                         return $res;
                     }
@@ -173,6 +190,7 @@ class Router {
                         if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
+                            array_unshift($res['paths'], $dir . '/' . $item);
                         }
                         return $res;
                     }
@@ -193,6 +211,7 @@ class Router {
                         if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
+                            array_unshift($res['paths'], $dir . '/' . $item);
                         }
                         return $res;
                     }
@@ -208,6 +227,7 @@ class Router {
                         if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
+                            array_unshift($res['paths'], $dir . '/' . $item);
                         }
                         return $res;
                     }

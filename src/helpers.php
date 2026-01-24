@@ -120,8 +120,27 @@ function cache() {
     return \Rapo\Store::getDefault()->get('cache');
 }
 
+function storage() {
+    return \Rapo\Store::getDefault()->get('storage');
+}
+
+function queue($job = null, $data = [], $delay = 0) {
+    $q = \Rapo\Store::getDefault()->get('queue');
+    if ($job === null) return $q;
+    return $q->push($job, $data, $delay);
+}
+
 function redirect(string $url) {
     return new \Rapo\Http\RedirectResponse($url);
+}
+
+if (!function_exists('dd')) {
+    function dd(...$vars) {
+        foreach ($vars as $v) {
+            dump($v);
+        }
+        die(1);
+    }
 }
 
 function component(string $class, array $props = [], $children = null): string {
@@ -137,9 +156,5 @@ function component(string $class, array $props = [], $children = null): string {
     }
     $instance->props = array_merge($instance->props ?? [], $props);
     return $instance->render();
-}
-
-function storage() {
-    return new \Rapo\Storage();
 }
 

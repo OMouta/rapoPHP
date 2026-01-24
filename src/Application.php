@@ -14,7 +14,19 @@ class Application {
     }
 
     public function use($middleware) {
-        $this->middlewares[] = $middleware;
+        $store = Store::getDefault();
+        $guards = $store->get('config')['middleware']['guards'] ?? [];
+        
+        if (is_string($middleware) && isset($guards[$middleware])) {
+            $mapped = $guards[$middleware];
+            if (is_array($mapped)) {
+                foreach ($mapped as $m) $this->middlewares[] = $m;
+            } else {
+                $this->middlewares[] = $mapped;
+            }
+        } else {
+            $this->middlewares[] = $middleware;
+        }
         return $this;
     }
 
@@ -48,6 +60,11 @@ class Application {
                 $this->loadHierarchicalMiddleware($match['hierarchy']);
             }
 
+            // Load Hierarchical i18n
+            if (isset($match['paths'])) {
+                $this->store->get('translation')->load($match['paths']);
+            }
+
             // Run Middlewares
             foreach ($this->middlewares as $middleware) {
                 $result = is_callable($middleware) ? $middleware($request, $response) : (new $middleware())->handle($request, $response);
@@ -77,10 +94,25 @@ class Application {
 
             if ($handler instanceof \Closure) {
                 $content = call_user_func_array($handler, $params);
+            } elseif ($handler === 'markdown') {
+                $md = file_get_contents($match['markdown_file']);
+                // Very basic markdown parser for the demo
+                $content = $this->parseMarkdown($md);
             } elseif (is_array($handler) || is_string($handler)) {
                 $controllerClass = is_array($handler) ? $handler[0] : $handler;
                 $action = is_array($handler) ? $handler[1] : 'index';
                 
+                // Reflection for Attributes (Validation DTO support)
+                $reflection = new \ReflectionClass($controllerClass);
+                if ($reflection->hasMethod($action)) {
+                    $methodRef = $reflection->getMethod($action);
+                    $attributes = $methodRef->getAttributes(\Rapo\Http\Attributes\Validate::class);
+                    foreach ($attributes as $attr) {
+                        $validate = $attr->newInstance();
+                        $request->validate($validate->rules);
+                    }
+                }
+
                 // SEO Metadata support (Static)
                 if (method_exists($controllerClass, 'getMetadata')) {
                     $metadata = $controllerClass::getMetadata($request, $params);
@@ -113,6 +145,16 @@ class Application {
                             $res = is_callable($mInstance) ? $mInstance($request, $response) : $mInstance->handle($request, $response);
                             if ($res === false) return;
                         }
+                    }
+
+                    // Automatic Page-to-API Mirroring
+                    if (!$isApi && str_contains($request->getHeader('Accept') ?? '', 'application/json')) {
+                        $mirrorData = property_exists($instance, 'props') ? $instance->props : [];
+                        if (method_exists($instance, 'getServerSideProps')) {
+                            $mirrorData = array_merge($mirrorData, $instance->getServerSideProps($request, $params));
+                        }
+                        $response->json($mirrorData)->send();
+                        return;
                     }
 
                     // Server Actions support (Legacy _action)
@@ -152,6 +194,11 @@ class Application {
             // Apply Layouts (Nested)
             if (is_string($content) && !str_contains($content, '<html')) {
                 $content = $this->applyNestedLayouts($content, $match, $request);
+            }
+
+            // Inject Debug Badge
+            if (Env::get('DEBUG') === 'true' && is_string($content) && str_contains($content, '</body>')) {
+                $content = str_replace('</body>', $this->renderDebugBadge($match, $instance) . '</body>', $content);
             }
 
             // ISR Cache Save (Move to after layouts are applied)
@@ -230,6 +277,36 @@ class Application {
         $isSpa = $this->store->get('request')->getHeader('X-Rapo-Spa') === 'true';
         $cacheKey = 'isr_' . md5($uri . ($isSpa ? ':spa' : ''));
         $cache->set($cacheKey, $content, $revalidate);
+    }
+
+    protected function parseMarkdown($text) {
+        $parsedown = new \Parsedown();
+        $parsedown->setSafeMode(true);
+        $html = $parsedown->text($text);
+        return "<div class=\"prose mx-auto py-10\">$html</div>";
+    }
+
+    protected function renderDebugBadge($match, $instance = null) {
+        $props = $instance ? json_encode($instance->props ?? [], JSON_PRETTY_PRINT) : '{}';
+        $hierarchy = json_encode($match['hierarchy'] ?? [], JSON_PRETTY_PRINT);
+        
+        return "
+        <div id=\"rapo-debug-badge\" style=\"position:fixed; bottom:20px; right:20px; z-index:9999;\">
+            <button onclick=\"document.getElementById('rapo-debug-panel').style.display='block'\" style=\"background:#007bff; color:white; border:none; padding:10px 15px; border-radius:50px; cursor:pointer; font-weight:bold; box-shadow:0 4px 12px rgba(0,0,0,0.1);\">Rapo Debug</button>
+        </div>
+        <div id=\"rapo-debug-panel\" style=\"display:none; position:fixed; bottom:80px; right:20px; width:350px; max-height:500px; background:white; border:1px solid #ddd; border-radius:12px; z-index:9999; overflow-y:auto; font-family:sans-serif; box-shadow:0 8px 24px rgba(0,0,0,0.15);\">
+            <div style=\"padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;\">
+                <strong style=\"color:#333\">Rapo Context</strong>
+                <button onclick=\"document.getElementById('rapo-debug-panel').style.display='none'\" style=\"background:none; border:none; cursor:pointer; font-size:18px;\">&times;</button>
+            </div>
+            <div style=\"padding:15px; font-size:12px;\">
+                <p><strong>Route Hierarchy:</strong></p>
+                <pre style=\"background:#f8f9fa; padding:10px; border-radius:6px; overflow-x:auto;\">{$hierarchy}</pre>
+                <p><strong>Page Props:</strong></p>
+                <pre style=\"background:#f8f9fa; padding:10px; border-radius:6px; overflow-x:auto;\">{$props}</pre>
+            </div>
+        </div>
+        ";
     }
 
     protected function applyNestedLayouts($content, $match, $request): string {

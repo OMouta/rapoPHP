@@ -7,7 +7,7 @@ class Storage {
     protected $baseUrl;
 
     public function __construct() {
-        $this->root = \Rapo\Env::get('STORAGE_PATH', dirname(__DIR__) . '/storage/app');
+        $this->root = \Rapo\Env::get('STORAGE_PATH', getcwd() . '/storage/app');
         $this->baseUrl = \Rapo\Env::get('STORAGE_URL', '/storage');
     }
 
@@ -17,8 +17,27 @@ class Storage {
         return file_put_contents($fullPath, $content);
     }
 
+    public function putFile($path, $file) {
+        if (isset($file['tmp_name'])) {
+            return $this->put($path, file_get_contents($file['tmp_name']));
+        }
+        return false;
+    }
+
     public function get($path) {
         return file_get_contents($this->root . '/' . ltrim($path, '/'));
+    }
+
+    public function download($path, $name = null) {
+        $fullPath = $this->root . '/' . ltrim($path, '/');
+        if (!file_exists($fullPath)) return false;
+        
+        $name = $name ?: basename($path);
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $name . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+        exit;
     }
 
     public function exists($path) {

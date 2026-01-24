@@ -37,13 +37,32 @@ RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js d
 - **ISR & Caching**: Incremental Static Regeneration support for blazing fast load times via the built-in `Cache` service.
 - **Modern CLI**: Scaffolding for pages, components, models, middleware, and server actions.
 - **Image Optimization**: Built-in `Image` component for lazy-loading and optimization.
-- **Mail Engine**: Use Rapo Components to design and send beautiful responsive emails.
+- **Mail Engine**: Professional email handling using **Symfony Mailer**, powered by Rapo Components.
+- **Context Debugger**: A built-in floating badge in debug mode to inspect component props and route hierarchy.
+- **Quality Tools**: Built-in `dd()` and `dump()` helpers via **Symfony Var-Dumper**.
 
 ### Modern Data & Auth
 
 - **Active Record ORM**: A fluent way to interact with your database.
 - **Automatic Migrations**: Define your schema in models and sync effortlessly.
 - **Auth Scaffolding**: Get a full authentication system running in seconds.
+- **Storage Abstraction**: Simplified file management with `storage()` helper and `useStorage()` hook.
+- **Background Queues**: Handle heavy tasks out-of-process with the SQLite-based `queue()` system.
+- **Attribute-based Validation**: Cleanly validate requests using PHP 8 Attributes: `#[Validate(['email' => 'required|email'])]`.
+
+## Rapo-Only Unique Features
+
+### Hierarchical i18n
+
+Translations that follow your folder structure. Place `translation.php` in any route folder, and use the `useTranslation()` hook. It automatically merges translations from the current page up to the root.
+
+### Automatic Page-to-API Mirroring
+
+Every page is an API. Request any page with `Accept: application/json` and RapoPHP will return the `props` and `getServerSideProps` data as JSON instead of HTML.
+
+### Markdown-as-Routes
+
+Create docs effortlessly. Create `Page.md` in any route folder, and RapoPHP will automatically parse and render it using **Parsedown**, the fastest and most stable Markdown parser for PHP.
 
 ## Installation
 
@@ -76,6 +95,47 @@ php vendor/bin/rapo make:action contact
 
 # Run migrations
 php vendor/bin/rapo migrate
+
+# Start queue worker
+php vendor/bin/rapo queue:work
+```
+
+## Advanced Features
+
+### Server Actions & Validation
+
+Handle forms with zero-config using `Action.php` and declarative validation:
+
+```php
+namespace App\Pages\contact;
+
+use Rapo\Http\Attributes\Validate;
+
+class Action {
+    #[Validate(['email' => 'required|email', 'msg' => 'required'])]
+    public function handle($request) {
+        // Logic here...
+        return redirect('/thanks');
+    }
+}
+```
+
+### Background Jobs
+
+Keep your app fast by offloading heavy tasks:
+
+```php
+// Dispatch to queue
+queue(SendEmailJob::class, ['to' => 'user@example.com']);
+```
+
+### Storage
+
+Easily manage files across different environments:
+
+```php
+storage()->put('uploads/photo.jpg', $binaryData);
+$url = storage()->url('uploads/photo.jpg');
 ```
 
 ---

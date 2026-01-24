@@ -229,6 +229,19 @@ switch ($command) {
         echo "Action created at $file\n";
         break;
 
+    case 'queue:work':
+        $queue = $store->get('queue');
+        echo "Rapo Queue Worker starting...\n";
+        while (true) {
+            $worked = $queue->work();
+            if (!$worked) {
+                sleep(3);
+            } else {
+                echo "[" . date('Y-m-d H:i:s') . "] Processed job successfully.\n";
+            }
+        }
+        break;
+
     case 'scaffold':
         $name = $argv[2] ?? null;
         if (!$name) die("Please provide a name for scaffolding. Example: scaffold Post\n");

@@ -13,15 +13,22 @@ class Store {
     }
 
     protected function registerDefaults() {
+        $this->setShared('config', function() {
+            $configPath = getcwd() . '/config/rapo.php';
+            return file_exists($configPath) ? require $configPath : ['middleware' => ['guards' => []]];
+        });
         $this->setShared('request', \Rapo\Http\Request::class);
         $this->setShared('response', \Rapo\Http\Response::class);
         $this->setShared('session', \Rapo\Http\Session::class);
         $this->setShared('router', \Rapo\Router::class);
         $this->setShared('db', function() {
-            return new \Rapo\Database(['driver' => 'sqlite', 'path' => __DIR__ . '/../database.sqlite']);
+            return new \Rapo\Database(['driver' => 'sqlite', 'path' => getcwd() . '/database.sqlite']);
         });
         $this->setShared('cache', \Rapo\Cache::class);
+        $this->setShared('storage', \Rapo\Storage::class);
+        $this->setShared('queue', \Rapo\Queue::class);
         $this->setShared('mail', \Rapo\Mail::class);
+        $this->setShared('translation', \Rapo\Translation::class);
         $this->setShared('head', \Rapo\Head::getInstance());
     }
 

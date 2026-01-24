@@ -2,17 +2,23 @@
 
 namespace Rapo;
 
+use Symfony\Component\Mailer\Transport;
+use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Mime\Email;
+
 class Mail {
-    protected $transport;
+    protected $mailer;
     protected $from;
 
     public function __construct() {
-        // Simple PHP mail transport by default
-        // Could be extended to use SMTP/Symfony Mailer later
+        $dsn = Env::get('MAIL_DSN', 'sendmail://default');
+        $transport = Transport::fromDsn($dsn);
+        $this->mailer = new Mailer($transport);
+        $this->from = Env::get('MAIL_FROM', 'hello@rapo.php');
     }
 
     public function setFrom($email, $name = null) {
-        $this->from = $name ? "$name <$email>" : $email;
+        $this->from = $email; // Symfony Mailer Address handles name separately or in string
         return $this;
     }
 
@@ -27,18 +33,12 @@ class Mail {
         $component = new $componentClass($props);
         $html = $component->render();
 
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-type: text/html; charset=utf-8',
-            'X-Mailer: RapoPHP'
-        ];
+        $email = (new Email())
+            ->from($this->from)
+            ->to($to)
+            ->subject($subject)
+            ->html($html);
 
-        if ($this->from) {
-            $headers[] = 'From: ' . $this->from;
-        }
-
-        // In a real app, you might want to use a proper library here.
-        // For RapoPHP core, we'll keep it simple and extensible.
-        return mail($to, $subject, $html, implode("\r\n", $headers));
+        return $this->mailer->send($email);
     }
 }

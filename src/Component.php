@@ -93,6 +93,27 @@ abstract class Component {
     }
 
     /**
+     * Storage hook - access to the filesystem
+     */
+    protected function useStorage() {
+        return $this->useStore('storage');
+    }
+
+    /**
+     * Queue hook - push background jobs
+     */
+    protected function useQueue() {
+        return $this->useStore('queue');
+    }
+
+    /**
+     * Translation hook - access hierarchical translations
+     */
+    protected function useTranslation() {
+        return $this->useStore('translation');
+    }
+
+    /**
      * Store hook - get global services
      */
     protected function useStore($service) {
