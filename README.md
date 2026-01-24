@@ -2,9 +2,12 @@
 
 RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js developer experience** to the PHP world. It moves away from traditional MVC patterns in favor of a **component-centric architecture**, file-based routing, and built-in reactivity.
 
-## 🚀 Key Modern Features
+> **⚠️ Warning: RapoPHP is in early development. APIs and features may change significantly and security improvements are ongoing. Use at your own risk.**
 
-### 🛣️ Zero-Config File-based Routing (Next.js App Router Style)
+## Key Modern Features
+
+### Zero-Config File-based Routing (Next.js App Router Style)
+
 - **Folder-Based URL Segments**: Your directory structure in `src/Pages` directly maps to URLs.
 - **Routable Files**: A route is only public if it contains a `Page.php` or `Index.php`. Colocate other files (components, tests) safely.
 - **Private Folders**: Prefix folders with `_` (e.g., `_components`) to opt them out of routing.
@@ -13,24 +16,27 @@ RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js d
 - **Special Files**: Built-in support for `Layout.php`, `Template.php`, `Error.php`, and `NotFound.php` at any level.
 - **Hierarchical Layouts**: Layouts nest automatically following the folder structure.
 
-### 🍱 Component-Centric UI
+### Component-Centric UI
+
 - **Pages as Components**: Forget controllers. A page is just a PHP class extending `Component`.
 - **JSX-style PHP**: Use the `h()` helper for a declarative way to build HTML.
-- **Functional Hooks**: 
+- **Functional Hooks**:
   - `useRouter()`: Access routing data and navigation.
   - `useHead()`: Declarative metadata management.
   - `useState()`: Persisted state across requests.
   - `useForm()`: Simplified form handling and validation.
 - **Nested Layouts**: Intuitively wrap pages with layouts at any level.
 
-### ⚡ Performance & DX
+### Performance & DX
+
 - **Rapo-Live**: Livewire-style server-side reactivity for interactive components.
 - **Data Fetching**: Built-in `getServerSideProps` for pre-rendering data.
 - **ISR & Caching**: Incremental Static Regeneration support for blazing fast load times.
 - **Modern CLI**: Scaffolding that generates modern component-based code.
 - **Image Optimization**: Built-in `Image` component for lazy-loading and optimization.
 
-### 💾 Modern Data & Auth
+### Modern Data & Auth
+
 - **Active Record ORM**: A fluent way to interact with your database.
 - **Automatic Migrations**: Define your schema in models and sync effortlessly.
 - **Auth Scaffolding**: Get a full authentication system running in seconds.
