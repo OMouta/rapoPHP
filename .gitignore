@@ -6,3 +6,5 @@
 
 cache
 vendor
+
+composer.lock
