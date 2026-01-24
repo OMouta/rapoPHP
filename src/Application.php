@@ -33,14 +33,26 @@ class Application {
             // Global middleware.php support
             $this->loadGlobalMiddleware();
 
+            $uri = $request->getUri();
+            $method = $request->getMethod();
+
+            // Match Route first to find hierarchy for local middlewares
+            $match = $router->handle($uri, $method);
+
+            if (!$match) {
+                throw new \Exception("Page not found", 404);
+            }
+
+            // Load hierarchy-based middlewares
+            if (isset($match['hierarchy'])) {
+                $this->loadHierarchicalMiddleware($match['hierarchy']);
+            }
+
             // Run Middlewares
             foreach ($this->middlewares as $middleware) {
                 $result = is_callable($middleware) ? $middleware($request, $response) : (new $middleware())->handle($request, $response);
                 if ($result === false) return; // Middleware halted execution
             }
-
-            $uri = $request->getUri();
-            $method = $request->getMethod();
 
             // ISR Cache Check
             if ($method === 'GET' && $cachedContent = $this->getCachedPage($uri)) {
@@ -54,15 +66,14 @@ class Application {
                 return;
             }
 
-            $match = $router->handle($uri, $method);
-
-            if (!$match) {
-                throw new \Exception("Page not found", 404);
-            }
-
             $handler = $match['handler'];
             $params = $match['params'];
             $isApi = $match['is_api'] ?? false;
+
+            // Handle Server Actions (Action.php or _action)
+            if ($method === 'POST') {
+                $this->handleServerAction($match, $request, $response);
+            }
 
             if ($handler instanceof \Closure) {
                 $content = call_user_func_array($handler, $params);
@@ -86,6 +97,9 @@ class Application {
                     
                     // Server-side Data Fetching (getServerSideProps)
                     if (method_exists($instance, 'getServerSideProps')) {
+                        // Before slow data fetching, we could theoretically send Loading.php
+                        // In PHP this requires Ob_flush which is tricky with Nested Layouts.
+                        // For now we just run it.
                         $extraProps = $instance->getServerSideProps($request, $params);
                         $instance->props = array_merge($instance->props, $extraProps);
                     }
@@ -101,7 +115,7 @@ class Application {
                         }
                     }
 
-                    // Server Actions support
+                    // Server Actions support (Legacy _action)
                     if ($method === 'POST' && $actionName = $request->getPost('_action')) {
                         if (method_exists($instance, $actionName)) {
                             $data = $request->getPost();
@@ -161,8 +175,7 @@ class Application {
 
     protected function loadGlobalMiddleware() {
         // Assume middleware.php is in the app root if we can find it
-        // For now, look in current directory or app path
-        $path = $_SERVER['DOCUMENT_ROOT'] . $this->store->get('request')->getBasePath() . '/middleware.php';
+        $path = getcwd() . '/middleware.php';
         if (file_exists($path)) {
             $middlewares = require $path;
             if (is_array($middlewares)) {
@@ -171,32 +184,52 @@ class Application {
         }
     }
 
-    protected function getCachedPage($uri) {
-        $isSpa = $this->store->get('request')->getHeader('X-Rapo-Spa') === 'true';
-        $cacheKey = md5($uri . ($isSpa ? ':spa' : ''));
-        $cacheFile = __DIR__ . '/../cache/' . $cacheKey . '.html';
-
-        if (file_exists($cacheFile)) {
-            $meta = json_decode(file_get_contents($cacheFile . '.json'), true);
-            if ($meta['expires_at'] > time()) {
-                return file_get_contents($cacheFile);
+    protected function loadHierarchicalMiddleware($hierarchy) {
+        $router = $this->store->get('router');
+        foreach ($hierarchy as $ns) {
+            // Convert namespace back to path relative to src
+            $relPath = str_replace([$router->getPagesNamespace() . '\\', '\\'], ['', '/'], $ns);
+            $possiblePath = getcwd() . '/src/Pages/' . trim($relPath, '/') . '/middleware.php';
+            if (file_exists($possiblePath)) {
+                $middlewares = require $possiblePath;
+                if (is_array($middlewares)) {
+                    foreach ($middlewares as $m) $this->use($m);
+                }
             }
         }
-        return null;
+    }
+
+    protected function handleServerAction($match, $request, $response) {
+        $hierarchy = $match['hierarchy'] ?? [];
+        // Check for Action.php in the hierarchy, starting from most specific
+        foreach (array_reverse($hierarchy) as $ns) {
+            $class = $ns . '\\Action';
+            if (class_exists($class)) {
+                $instance = Container::getInstance()->resolve($class);
+                if (method_exists($instance, 'handle')) {
+                    $result = $instance->handle($request, $response);
+                    if ($result instanceof \Rapo\Http\Response) {
+                        $result->send();
+                        exit; // Halt for redirect or direct response
+                    }
+                }
+            }
+        }
+    }
+
+    protected function getCachedPage($uri) {
+        $cache = $this->store->get('cache');
+        $isSpa = $this->store->get('request')->getHeader('X-Rapo-Spa') === 'true';
+        $cacheKey = 'isr_' . md5($uri . ($isSpa ? ':spa' : ''));
+        return $cache->get($cacheKey);
     }
 
     protected function cachePage($uri, $content, $revalidate) {
         if (!is_string($content)) return;
-        if (!is_dir(__DIR__ . '/../cache')) mkdir(__DIR__ . '/../cache', 0777, true);
-        
+        $cache = $this->store->get('cache');
         $isSpa = $this->store->get('request')->getHeader('X-Rapo-Spa') === 'true';
-        $cacheKey = md5($uri . ($isSpa ? ':spa' : ''));
-        $cacheFile = __DIR__ . '/../cache/' . $cacheKey . '.html';
-
-        file_put_contents($cacheFile, $content);
-        file_put_contents($cacheFile . '.json', json_encode([
-            'expires_at' => time() + $revalidate
-        ]));
+        $cacheKey = 'isr_' . md5($uri . ($isSpa ? ':spa' : ''));
+        $cache->set($cacheKey, $content, $revalidate);
     }
 
     protected function applyNestedLayouts($content, $match, $request): string {

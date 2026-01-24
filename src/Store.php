@@ -19,6 +19,8 @@ class Store {
         $this->setShared('db', function() {
             return new \Rapo\Database(['driver' => 'sqlite', 'path' => __DIR__ . '/../database.sqlite']);
         });
+        $this->setShared('cache', \Rapo\Cache::class);
+        $this->setShared('mail', \Rapo\Mail::class);
         $this->setShared('head', \Rapo\Head::getInstance());
     }
 

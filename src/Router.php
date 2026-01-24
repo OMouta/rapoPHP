@@ -103,6 +103,11 @@ class Router {
     }
 
     protected function recursiveMatch($dir, $ns, $segments, &$params, $isApi = false, $method = 'GET') {
+        $loadingClass = null;
+        if (!$isApi && file_exists($dir . '/Loading.php')) {
+            $loadingClass = $ns . '\\Loading';
+        }
+
         if (empty($segments)) {
             // Check for Page.php or Index.php (or Route.php for API)
             $files = $isApi ? ['Route'] : ['Page', 'Index'];
@@ -124,7 +129,8 @@ class Router {
                         return [
                             'handler' => [$class, $action],
                             'params' => $params,
-                            'hierarchy' => [$ns]
+                            'hierarchy' => [$ns],
+                            'loading' => $loadingClass ? [$loadingClass] : []
                         ];
                     }
                 }
@@ -145,13 +151,12 @@ class Router {
 
                 // Next.js convention: Folders in () are Route Groups and don't affect URL
                 $isGroup = preg_match('/^\((.+)\)$/', $item);
-                $isDynamic = preg_match('/^\[(.+)\]$/', $item);
                 
                 // If it's a group, we stay on the same segments but dive into the folder
                 if ($isGroup) {
                     $res = $this->recursiveMatch($dir . '/' . $item, $ns, array_merge([$segment], $segments), $params, $isApi, $method);
                     if ($res) {
-                        // Avoid duplicating the same namespace in hierarchy (common with route groups)
+                        if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
                         }
@@ -165,6 +170,7 @@ class Router {
                     $nextNs = $ns . '\\' . $item;
                     $res = $this->recursiveMatch($dir . '/' . $item, $nextNs, $segments, $params, $isApi, $method);
                     if ($res) {
+                        if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
                         }
@@ -184,6 +190,7 @@ class Router {
                     // Match Page.php inside the catch-all folder, namespace doesn't include the [slug] folder
                     $res = $this->recursiveMatch($dir . '/' . $item, $ns, [], $params, $isApi, $method);
                     if ($res) {
+                        if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
                         }
@@ -198,6 +205,7 @@ class Router {
                     // Namespace doesn't include the [slug] folder
                     $res = $this->recursiveMatch($dir . '/' . $item, $ns, $segments, $params, $isApi, $method);
                     if ($res) {
+                        if ($loadingClass) array_unshift($res['loading'], $loadingClass);
                         if (!in_array($ns, $res['hierarchy'])) {
                             array_unshift($res['hierarchy'], $ns);
                         }

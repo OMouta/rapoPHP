@@ -191,6 +191,44 @@ switch ($command) {
         echo "Model created at $file\n";
         break;
 
+    case 'make:middleware':
+        $name = $argv[2] ?? null;
+        if (!$name) die("Please provide a middleware name. Example: make:middleware Auth\n");
+        $file = $appPath . "/Middleware/$name.php";
+        if (file_exists($file)) die("Middleware $name already exists.\n");
+        if (!is_dir(dirname($file))) mkdir(dirname($file), 0777, true);
+        
+        $tpl = "<?php\n\nnamespace $appNamespace\\Middleware;\n\nuse Rapo\\Http\\Request;\nuse Rapo\\Http\\Response;\n\nclass $name {\n    public function handle(Request \$request, Response \$response) {\n        // Logic here\n        return true;\n    }\n}\n";
+        file_put_contents($file, $tpl);
+        echo "Middleware created at $file\n";
+        break;
+
+    case 'make:api-route':
+        $path = $argv[2] ?? null;
+        if (!$path) die("Please provide a path. Example: make:api-route status\n");
+        $file = $appPath . "/Api/$path/Route.php";
+        if (file_exists($file)) die("API Route $path already exists.\n");
+        if (!is_dir(dirname($file))) mkdir(dirname($file), 0777, true);
+        
+        $ns = $appNamespace . "\\Api\\" . str_replace('/', '\\', $path);
+        $tpl = "<?php\n\nnamespace $ns;\n\nuse Rapo\\Http\\Request;\n\nclass Route {\n    public function GET(Request \$request) {\n        return ['status' => 'ok'];\n    }\n}\n";
+        file_put_contents($file, $tpl);
+        echo "API Route created at $file\n";
+        break;
+
+    case 'make:action':
+        $path = $argv[2] ?? null;
+        if (!$path) die("Please provide a path. Example: make:action contact\n");
+        $file = $appPath . "/Pages/$path/Action.php";
+        if (file_exists($file)) die("Action $path already exists.\n");
+        if (!is_dir(dirname($file))) mkdir(dirname($file), 0777, true);
+        
+        $ns = $appNamespace . "\\Pages\\" . str_replace('/', '\\', $path);
+        $tpl = "<?php\n\nnamespace $ns;\n\nuse Rapo\\Http\\Request;\nuse Rapo\\Http\\Response;\n\nclass Action {\n    public function handle(Request \$request, Response \$response) {\n        // Handle POST request here\n        return redirect('/" . ltrim($path, '/') . "');\n    }\n}\n";
+        file_put_contents($file, $tpl);
+        echo "Action created at $file\n";
+        break;
+
     case 'scaffold':
         $name = $argv[2] ?? null;
         if (!$name) die("Please provide a name for scaffolding. Example: scaffold Post\n");
