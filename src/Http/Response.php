@@ -45,23 +45,6 @@ class Response {
     }
 
     public function send() {
-        // Inject Debug Tools if enabled
-        if (class_exists(\Rapo\Debug::class)) {
-            $contentType = $this->headers['Content-Type'] ?? '';
-            $isJson = stripos($contentType, 'application/json') !== false;
-            
-            if (!$isJson) {
-                $debugHtml = \Rapo\Debug::renderDevTools();
-                if ($debugHtml) {
-                    if (is_string($this->content) && str_contains($this->content, '</body>')) {
-                        $this->content = str_replace('</body>', $debugHtml . '</body>', $this->content);
-                    } else if (is_string($this->content)) {
-                        $this->content .= $debugHtml;
-                    }
-                }
-            }
-        }
-
         http_response_code($this->statusCode);
         foreach ($this->headers as $name => $value) {
             header("$name: $value");

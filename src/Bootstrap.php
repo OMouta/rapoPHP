@@ -7,6 +7,21 @@ class Bootstrap {
         // Register framework autoloader
         require_once __DIR__ . '/autoload.php';
 
+        // Also try to find composer vendor if not already loaded (for standalone usage)
+        if (!class_exists('\\Dotenv\\Dotenv')) {
+            $possibleAutoloaders = [
+                dirname(__DIR__) . '/vendor/autoload.php', // framework/vendor
+                dirname(dirname(__DIR__)) . '/autoload.php', // framework/../autoload.php (sometimes in complex setups)
+                ($appPath ? dirname($appPath) : getcwd()) . '/vendor/autoload.php' // project/vendor
+            ];
+            foreach ($possibleAutoloaders as $autoloader) {
+                if (file_exists($autoloader)) {
+                    require_once $autoloader;
+                    if (class_exists('\\Dotenv\\Dotenv')) break;
+                }
+            }
+        }
+
         // Load .env if exists in app root (parent of appPath usually)
         if ($appPath) {
             $envPath = dirname($appPath) . '/.env';

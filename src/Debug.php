@@ -5,10 +5,16 @@ namespace Rapo;
 class Debug {
     protected static $errors = [];
     protected static $enabled = false;
+    protected static $startTime;
+    protected static $context = [
+        'hierarchy' => [],
+        'props' => []
+    ];
 
     public static function enable() {
         if (static::$enabled) return;
         static::$enabled = true;
+        static::$startTime = microtime(true);
 
         error_reporting(E_ALL);
         ini_set('display_errors', 0);
@@ -67,21 +73,22 @@ class Debug {
         return static::$errors;
     }
 
+    public static function setContext(array $context) {
+        static::$context = array_merge(static::$context, $context);
+    }
+
     public static function renderDevTools() {
-        if (!static::$enabled || empty(static::$errors)) return '';
+        if (!static::$enabled) return '';
 
         $criticalErrors = array_filter(static::$errors, function($e) {
             return in_array($e['type'], ['Error', 'Parse Error', 'Core Error', 'Compile Error', 'User Error', 'Recoverable Error']);
         });
 
-        $hasCritical = !empty($criticalErrors);
-        $errorCount = count(static::$errors);
-
-        if ($hasCritical) {
+        if (!empty($criticalErrors)) {
             return self::renderCriticalOverlay($criticalErrors);
         }
 
-        return self::renderWarningPill($errorCount);
+        return self::renderToolbar();
     }
 
     protected static function renderCriticalOverlay($errors) {
@@ -121,37 +128,295 @@ class Debug {
         </div>";
     }
 
-    protected static function renderWarningPill($count) {
-        $errorHtml = '';
-        foreach (static::$errors as $error) {
-            $errorHtml .= "<div style='margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;'>
-                <strong style='color: #ffb86c'>[{$error['type']}]</strong> " . htmlspecialchars($error['message']) . "<br>
-                <small style='color: #888'>in {$error['file']} on line {$error['line']}</small>
-            </div>";
+    public static function renderToolbar() {
+        $store = Store::getDefault();
+        $request = null;
+        $router = null;
+        try { $request = $store->get('request'); } catch (\Exception $e) {}
+        try { $router = $store->get('router'); } catch (\Exception $e) {}
+        
+        $errorCount = count(static::$errors);
+        $execTime = static::$startTime ? round((microtime(true) - static::$startTime) * 1000, 2) : 0;
+        $memUsage = round(memory_get_usage() / 1024 / 1024, 2);
+        
+        $data = [
+            'errors' => static::$errors,
+            'route' => [
+                'uri' => $request ? $request->getUri() : 'N/A',
+                'method' => $request ? $request->getMethod() : 'N/A',
+                'params' => $router ? $router->getParams() : [],
+            ],
+            'context' => static::$context,
+            'system' => [
+                'php' => PHP_VERSION,
+                'memory' => $memUsage . ' MB',
+                'time' => $execTime . ' ms',
+            ]
+        ];
+
+        $json_data = json_encode($data);
+        $isSpa = isset($_SERVER['HTTP_X_RAPO_SPA']) || isset($_SERVER['HTTP_X_RAPO_LIVE']);
+
+        $html = '';
+        if (!$isSpa) {
+            $html .= self::getStyles();
+            $html .= self::getStructure($errorCount);
         }
 
-        return "
-        <div id='rapo-runtime-pill' style='position: fixed; bottom: 15px; right: 15px; z-index: 99999; font-family: sans-serif;'>
-            <div id='rapo-pill-header' style='background: #222; color: #eee; padding: 8px 15px; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.4); display: flex; align-items: center; border: 1px solid #444;'>
-                <span style='color: #ff5555; margin-right: 8px;'>●</span>
-                <strong style='font-size: 12px;'>Rapo Runtime</strong>
-                <span style='background: #ff5555; color: white; border-radius: 10px; padding: 0 6px; font-size: 10px; margin-left: 8px;'>$count</span>
-            </div>
-            <div id='rapo-pill-body' style='display: none; position: absolute; bottom: 45px; right: 0; background: #222; color: #eee; padding: 15px; border-radius: 8px; width: 350px; max-height: 400px; overflow-y: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); border: 1px solid #444;'>
-                <div style='font-weight: bold; margin-bottom: 15px; color: #ffb86c; border-bottom: 1px solid #444; padding-bottom: 5px;'>Warnings & Notices</div>
-                $errorHtml
-            </div>
-        </div>
+        $html .= "
+        <script id='rapo-debug-data' type='application/json'>$json_data</script>
         <script>
-            (function() {
-                const header = document.getElementById('rapo-pill-header');
-                const body = document.getElementById('rapo-pill-body');
-                if (header && body) {
-                    header.addEventListener('click', () => {
-                        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+        (function() {
+            const dataEl = document.getElementById('rapo-debug-data');
+            if (!dataEl) return;
+            const data = JSON.parse(dataEl.textContent);
+            dataEl.remove();
+
+            if (window.updateRapoDebug) {
+                window.updateRapoDebug(data);
+            } else {
+                initRapoDebug(data);
+            }
+
+            function initRapoDebug(initialData) {
+                const pill = document.querySelector('.rapo-debug-pill');
+                const panel = document.querySelector('.rapo-debug-panel');
+                if (!pill || !panel) return;
+
+                pill.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    panel.classList.toggle('active');
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (!panel.contains(e.target) && !pill.contains(e.target)) {
+                        panel.classList.remove('active');
+                    }
+                });
+
+                const tabs = panel.querySelectorAll('.rapo-debug-tab');
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        tabs.forEach(t => t.classList.remove('active'));
+                        tab.classList.add('active');
+                        const target = tab.dataset.tab;
+                        panel.querySelectorAll('.rapo-tab-content').forEach(c => {
+                            c.style.display = c.id === 'tab-' + target ? 'block' : 'none';
+                        });
                     });
-                }
-            })();
+                });
+
+                window.updateRapoDebug = (newData) => {
+                    const count = document.querySelector('.rapo-debug-count');
+                    if (count) {
+                        count.textContent = newData.errors.length;
+                        count.style.display = newData.errors.length > 0 ? 'flex' : 'none';
+                        pill.classList.toggle('has-errors', newData.errors.length > 0);
+                    }
+                    
+                    // Errors Content
+                    const errorsContainer = document.getElementById('tab-errors');
+                    let errorsHtml = '<div class=\"rapo-section-title\">Warnings & Notifications (' + newData.errors.length + ')</div>';
+                    if (newData.errors.length === 0) {
+                        errorsHtml += '<div class=\"rapo-empty\">No issues detected.</div>';
+                    }
+                    newData.errors.forEach(err => {
+                        errorsHtml += '<div class=\"rapo-error-item\">';
+                        errorsHtml += '<div class=\"rapo-error-header\"><span class=\"rapo-tag\">' + err.type + '</span> ' + err.message + '</div>';
+                        errorsHtml += '<div class=\"rapo-error-footer\">' + err.file + ':' + err.line + '</div>';
+                        errorsHtml += '</div>';
+                    });
+                    errorsContainer.innerHTML = errorsHtml;
+
+                    // Route Content
+                    const routeContainer = document.getElementById('tab-route');
+                    let routeHtml = '<div class=\"rapo-section-title\">Current Route</div>';
+                    routeHtml += '<div class=\"rapo-info-grid\">';
+                    routeHtml += '<div><strong>Method</strong><span>' + newData.route.method + '</span></div>';
+                    routeHtml += '<div><strong>URL</strong><span>' + newData.route.uri + '</span></div>';
+                    routeHtml += '</div>';
+                    routeHtml += '<div class=\"rapo-section-title\" style=\"margin-top:10px\">Parameters</div>';
+                    routeHtml += '<pre style=\"font-size:11px; color:#aaa; background:#111; padding:10px; border-radius:4px; margin:0; white-space:pre-wrap;\">' + JSON.stringify(newData.route.params, null, 2) + '</pre>';
+                    routeContainer.innerHTML = routeHtml;
+
+                    // Context Content
+                    const contextContainer = document.getElementById('tab-context');
+                    let contextHtml = '<div class=\"rapo-section-title\">Route Hierarchy</div>';
+                    if (newData.context.hierarchy && newData.context.hierarchy.length > 0) {
+                        newData.context.hierarchy.forEach((item, i) => {
+                            contextHtml += '<div style=\"font-size:12px; margin-bottom:5px; padding-left:' + (i * 10) + 'px; color:' + (i === newData.context.hierarchy.length - 1 ? '#fff' : '#888') + '\"> ';
+                            contextHtml += (i > 0 ? '└ ' : '') + item;
+                            contextHtml += '</div>';
+                        });
+                    } else {
+                        contextHtml += '<div class=\"rapo-empty\">No hierarchy data.</div>';
+                    }
+                    
+                    contextHtml += '<div class=\"rapo-section-title\" style=\"margin-top:20px\">Page Props</div>';
+                    contextHtml += '<pre style=\"font-size:11px; color:#aaa; background:#111; padding:10px; border-radius:4px; margin:0; white-space:pre-wrap;\">' + JSON.stringify(newData.context.props || {}, null, 2) + '</pre>';
+                    contextContainer.innerHTML = contextHtml;
+
+                    // System Content
+                    const systemContainer = document.getElementById('tab-system');
+                    let systemHtml = '<div class=\"rapo-section-title\">Server Information</div>';
+                    systemHtml += '<div class=\"rapo-info-grid\">';
+                    systemHtml += '<div><strong>PHP Version</strong><span>' + newData.system.php + '</span></div>';
+                    systemHtml += '<div><strong>Memory Usage</strong><span>' + newData.system.memory + '</span></div>';
+                    systemHtml += '<div><strong>Execution Time</strong><span>' + newData.system.time + '</span></div>';
+                    systemHtml += '</div>';
+                    systemContainer.innerHTML = systemHtml;
+                };
+
+                window.updateRapoDebug(initialData);
+            }
+        })();
         </script>";
+
+        return $html;
+    }
+
+    protected static function getStyles() {
+        return "
+        <style>
+            .rapo-debug-pill {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                width: 44px;
+                height: 44px;
+                background: #000;
+                color: #fff;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                z-index: 1000000;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                border: 1px solid #333;
+                transition: transform 0.2s, background 0.2s;
+            }
+            .rapo-debug-pill:hover { transform: scale(1.05); background: #111; }
+            .rapo-debug-pill.has-errors { border-color: #ff5555; }
+            .rapo-debug-count {
+                position: absolute;
+                top: -5px;
+                right: -5px;
+                background: #ff5555;
+                color: #fff;
+                font-size: 10px;
+                font-weight: bold;
+                min-width: 18px;
+                height: 18px;
+                padding: 0 4px;
+                border-radius: 9px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 2px solid #000;
+            }
+            .rapo-debug-panel {
+                position: fixed;
+                bottom: 80px;
+                right: 20px;
+                width: 380px;
+                height: 400px;
+                background: #000;
+                color: #eee;
+                border-radius: 12px;
+                border: 1px solid #333;
+                z-index: 1000000;
+                overflow: hidden;
+                display: none;
+                flex-direction: column;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;
+            }
+            .rapo-debug-panel.active { display: flex; }
+            .rapo-debug-header {
+                padding: 10px 15px;
+                border-bottom: 1px solid #222;
+                display: flex;
+                align-items: center;
+                background: #0a0a0a;
+            }
+            .rapo-debug-tab {
+                font-size: 12px;
+                color: #666;
+                padding: 8px 12px;
+                cursor: pointer;
+                transition: color 0.2s;
+                border-bottom: 2px solid transparent;
+            }
+            .rapo-debug-tab:hover { color: #fff; }
+            .rapo-debug-tab.active { color: #fff; border-bottom-color: #ff5555; }
+            .rapo-debug-content {
+                padding: 15px;
+                overflow-y: auto;
+                flex: 1;
+            }
+            .rapo-section-title {
+                font-size: 11px;
+                text-transform: uppercase;
+                color: #666;
+                letter-spacing: 0.5px;
+                margin-bottom: 12px;
+                font-weight: bold;
+            }
+            .rapo-error-item {
+                background: #111;
+                border: 1px solid #222;
+                border-radius: 6px;
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            .rapo-error-header { font-size: 12px; color: #eee; margin-bottom: 5px; line-height: 1.4; }
+            .rapo-error-footer { font-size: 10px; color: #555; font-family: monospace; word-break: break-all; }
+            .rapo-tag {
+                background: #ff555522;
+                color: #ff5555;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: bold;
+                margin-right: 5px;
+            }
+            .rapo-empty { color: #555; font-size: 12px; text-align: center; padding: 20px 0; }
+            .rapo-info-grid { display: grid; gap: 8px; font-size: 12px; }
+            .rapo-info-grid > div { display: flex; justify-content: space-between; border-bottom: 1px solid #111; padding-bottom: 4px; }
+            .rapo-info-grid strong { color: #888; font-weight: normal; }
+            .rapo-info-grid span { color: #fff; font-family: monospace; }
+            .rapo-tab-content { display: none; }
+        </style>";
+    }
+
+    protected static function getStructure($errorCount) {
+        $countStyle = $errorCount > 0 ? '' : 'display:none';
+        $pillClass = $errorCount > 0 ? 'rapo-debug-pill has-errors' : 'rapo-debug-pill';
+        
+        return "
+        <div class='$pillClass'>
+            <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>
+                <path d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'></path>
+                <polyline points='3.27 6.96 12 12.01 20.73 6.96'></polyline>
+                <line x1='12' y1='22.08' x2='12' y2='12'></line>
+            </svg>
+            <div class='rapo-debug-count' style='$countStyle'>$errorCount</div>
+        </div>
+        <div class='rapo-debug-panel'>
+            <div class='rapo-debug-header'>
+                <div class='rapo-debug-tab active' data-tab='errors'>Errors</div>
+                <div class='rapo-debug-tab' data-tab='route'>Route</div>
+                <div class='rapo-debug-tab' data-tab='context'>Context</div>
+                <div class='rapo-debug-tab' data-tab='system'>System</div>
+            </div>
+            <div class='rapo-debug-content'>
+                <div id='tab-errors' class='rapo-tab-content' style='display:block'></div>
+                <div id='tab-route' class='rapo-tab-content'></div>
+                <div id='tab-context' class='rapo-tab-content'></div>
+                <div id='tab-system' class='rapo-tab-content'></div>
+            </div>
+        </div>";
     }
 }
+

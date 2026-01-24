@@ -16,10 +16,7 @@ class VerifyCsrfToken {
         if (session_status() === PHP_SESSION_NONE) session_start();
 
         if (!$token || $token !== ($_SESSION['_token'] ?? '')) {
-            $response->setStatusCode(403);
-            $response->setContent('CSRF token mismatch.');
-            $response->send();
-            return false;
+            throw new \Exception('CSRF token mismatch.', 403);
         }
 
         return true;

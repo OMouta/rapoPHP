@@ -196,9 +196,19 @@ class Application {
                 $content = $this->applyNestedLayouts($content, $match, $request);
             }
 
-            // Inject Debug Badge
-            if (Env::get('DEBUG') === 'true' && is_string($content) && str_contains($content, '</body>')) {
-                $content = str_replace('</body>', $this->renderDebugBadge($match, $instance) . '</body>', $content);
+            // Inject Debug Toolbar
+            if (Env::get('DEBUG') === 'true' && is_string($content)) {
+                Debug::setContext([
+                    'hierarchy' => $match['hierarchy'] ?? [],
+                    'props' => (isset($instance) && property_exists($instance, 'props')) ? $instance->props : []
+                ]);
+                
+                $toolbar = Debug::renderToolbar();
+                if (str_contains($content, '</body>')) {
+                    $content = str_replace('</body>', $toolbar . '</body>', $content);
+                } elseif ($request->getHeader('X-Rapo-Spa') === 'true') {
+                    $content .= $toolbar;
+                }
             }
 
             // ISR Cache Save (Move to after layouts are applied)
@@ -284,29 +294,6 @@ class Application {
         $parsedown->setSafeMode(true);
         $html = $parsedown->text($text);
         return "<div class=\"prose mx-auto py-10\">$html</div>";
-    }
-
-    protected function renderDebugBadge($match, $instance = null) {
-        $props = $instance ? json_encode($instance->props ?? [], JSON_PRETTY_PRINT) : '{}';
-        $hierarchy = json_encode($match['hierarchy'] ?? [], JSON_PRETTY_PRINT);
-        
-        return "
-        <div id=\"rapo-debug-badge\" style=\"position:fixed; bottom:20px; right:20px; z-index:9999;\">
-            <button onclick=\"document.getElementById('rapo-debug-panel').style.display='block'\" style=\"background:#007bff; color:white; border:none; padding:10px 15px; border-radius:50px; cursor:pointer; font-weight:bold; box-shadow:0 4px 12px rgba(0,0,0,0.1);\">Rapo Debug</button>
-        </div>
-        <div id=\"rapo-debug-panel\" style=\"display:none; position:fixed; bottom:80px; right:20px; width:350px; max-height:500px; background:white; border:1px solid #ddd; border-radius:12px; z-index:9999; overflow-y:auto; font-family:sans-serif; box-shadow:0 8px 24px rgba(0,0,0,0.15);\">
-            <div style=\"padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;\">
-                <strong style=\"color:#333\">Rapo Context</strong>
-                <button onclick=\"document.getElementById('rapo-debug-panel').style.display='none'\" style=\"background:none; border:none; cursor:pointer; font-size:18px;\">&times;</button>
-            </div>
-            <div style=\"padding:15px; font-size:12px;\">
-                <p><strong>Route Hierarchy:</strong></p>
-                <pre style=\"background:#f8f9fa; padding:10px; border-radius:6px; overflow-x:auto;\">{$hierarchy}</pre>
-                <p><strong>Page Props:</strong></p>
-                <pre style=\"background:#f8f9fa; padding:10px; border-radius:6px; overflow-x:auto;\">{$props}</pre>
-            </div>
-        </div>
-        ";
     }
 
     protected function applyNestedLayouts($content, $match, $request): string {
@@ -400,7 +387,7 @@ class Application {
             
             $response->setStatusCode($code)->setContent((string)$content)->send();
         } else {
-            $response->setStatusCode($code)->setContent("<h1>{$code} Internal Server Error</h1><p>{$e->getMessage()}</p>")->send();
+            $response->setStatusCode($code)->setContent("<h1>Error {$code}</h1><p>{$e->getMessage()}</p>")->send();
         }
     }
 

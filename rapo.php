@@ -8,17 +8,17 @@ $appNamespace = 'App';
 // Try to find the framework
 $hasFramework = false;
 
-// 1. Try local folder (for monorepo development)
-if (file_exists(__DIR__ . '/src/Bootstrap.php')) {
+// 1. Try vendor (for installed projects or monorepo with vendor)
+if (file_exists($projectRoot . '/vendor/autoload.php')) {
+    require_once $projectRoot . '/vendor/autoload.php';
+    $hasFramework = class_exists('\\Rapo\\Bootstrap');
+    $appPath = is_dir($projectRoot . '/src') ? $projectRoot . '/src' : (is_dir($projectRoot . '/example/src') ? $projectRoot . '/example/src' : $projectRoot);
+} 
+// 2. Try local folder (for bare framework development)
+elseif (file_exists(__DIR__ . '/src/Bootstrap.php')) {
     require_once __DIR__ . '/src/autoload.php';
     $hasFramework = true;
     $appPath = is_dir($projectRoot . '/example/src') ? $projectRoot . '/example/src' : (is_dir($projectRoot . '/src') ? $projectRoot . '/src' : $projectRoot);
-} 
-// 2. Try vendor (for installed projects)
-elseif (file_exists($projectRoot . '/vendor/autoload.php')) {
-    require_once $projectRoot . '/vendor/autoload.php';
-    $hasFramework = class_exists('\\Rapo\\Bootstrap');
-    $appPath = $projectRoot . '/src';
 }
 
 if ($hasFramework) {

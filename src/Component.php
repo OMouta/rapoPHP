@@ -300,7 +300,7 @@ if (!window.Rapo) {
         }
     });
 
-    window.Rapo.navigate = async (url) => {
+    window.Rapo.navigate = async (url, push = true) => {
         try {
             const response = await fetch(url, { headers: { 'X-Rapo-Spa': 'true' } });
             const html = await response.text();
@@ -311,11 +311,15 @@ if (!window.Rapo) {
 
                 const main = document.querySelector('main');
                 if (main) {
-                    main.innerHTML = html;
+                    const range = document.createRange();
+                    const fragment = range.createContextualFragment(html);
+                    main.innerHTML = '';
+                    main.appendChild(fragment);
+                    
                     // Scroll to top
                     window.scrollTo(0, 0);
                     // Update URL
-                    window.history.pushState({}, '', url);
+                    if (push) window.history.pushState({}, '', url);
                 } else {
                     // Fallback to full reload if no <main> found
                     window.location.href = url;
@@ -329,7 +333,7 @@ if (!window.Rapo) {
     };
 
     window.onpopstate = () => {
-        window.location.reload(); // Simple for now
+        window.Rapo.navigate(window.location.pathname + window.location.search, false);
     };
 
     let inputDebounce;
