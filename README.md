@@ -62,7 +62,7 @@ Every page is an API. Request any page with `Accept: application/json` and RapoP
 
 ### Markdown-as-Routes
 
-Create docs effortlessly. Create `Page.md` in any route folder, and RapoPHP will automatically parse and render it using **Parsedown**, the fastest and most stable Markdown parser for PHP.
+Create docs effortlessly. Create `Page.md` in any route folder, and RapoPHP will automatically parse and render it.
 
 ## Installation
 

@@ -31,6 +31,7 @@ class Debug {
             'message' => $errstr,
             'file' => $errfile,
             'line' => $errline,
+            'is_vendor' => str_contains($errfile, DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR),
             'trace' => $trace ?: debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)
         ];
         return true;
@@ -221,8 +222,10 @@ class Debug {
                         errorsHtml += '<div class=\"rapo-empty\">No issues detected.</div>';
                     }
                     newData.errors.forEach(err => {
-                        errorsHtml += '<div class=\"rapo-error-item\">';
-                        errorsHtml += '<div class=\"rapo-error-header\"><span class=\"rapo-tag\">' + err.type + '</span> ' + err.message + '</div>';
+                        errorsHtml += '<div class=\"rapo-error-item' + (err.is_vendor ? ' is-vendor' : '') + '\">';
+                        errorsHtml += '<div class=\"rapo-error-header\">';
+                        if (err.is_vendor) errorsHtml += '<span class=\"rapo-tag\" style=\"background:#444;color:#aaa\">VENDOR</span>';
+                        errorsHtml += '<span class=\"rapo-tag\">' + err.type + '</span> ' + err.message + '</div>';
                         errorsHtml += '<div class=\"rapo-error-footer\">' + err.file + ':' + err.line + '</div>';
                         errorsHtml += '</div>';
                     });
@@ -370,6 +373,7 @@ class Debug {
                 padding: 10px;
                 margin-bottom: 10px;
             }
+            .rapo-error-item.is-vendor { opacity: 0.7; border-color: #1a1a1a; }
             .rapo-error-header { font-size: 12px; color: #eee; margin-bottom: 5px; line-height: 1.4; }
             .rapo-error-footer { font-size: 10px; color: #555; font-family: monospace; word-break: break-all; }
             .rapo-tag {
