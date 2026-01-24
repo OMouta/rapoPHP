@@ -41,20 +41,31 @@ RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js d
 - **Automatic Migrations**: Define your schema in models and sync effortlessly.
 - **Auth Scaffolding**: Get a full authentication system running in seconds.
 
-## 🛠️ CLI Commands
+## Installation
+
+The recommended way to install RapoPHP is via [Composer](https://getcomposer.org/):
 
 ```bash
-# Initialize a modern project
-php rapo.php project:init
+composer require rapo/framework
+php vendor/bin/rapo project:init
+```
 
-# Create a dynamic page: src/Pages/blog/[slug].php
-php rapo.php make:page "blog/[slug]"
+## CLI Commands
 
-# Scaffold a full resource
-php rapo.php scaffold Post
+After initializing your project, you can use the Rapo CLI:
 
-# Start dev server
-php rapo.php serve
+```bash
+# Start the development server
+php vendor/bin/rapo serve
+
+# Create a dynamic page: src/Pages/blog/[slug]/Page.php
+php vendor/bin/rapo make:page blog/[slug]
+
+# Create a new component
+php vendor/bin/rapo make:component Navbar
+
+# Run migrations
+php vendor/bin/rapo migrate
 ```
 
 ---

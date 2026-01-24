@@ -1,8 +1,25 @@
 {
     "name": "rapo/framework",
-    "description": "A cool and good simple PHP framework.",
+    "description": "A modern, lightweight PHP framework designed to bring the Next.js developer experience to the PHP world.",
     "type": "library",
     "license": "MIT",
+    "authors": [
+        {
+            "name": "OMouta"
+        }
+    ],
+    "keywords": [
+        "php",
+        "framework",
+        "nextjs-style",
+        "file-based-routing",
+        "components"
+    ],
+    "homepage": "https://github.com/OMouta/rapoPHP",
+    "support": {
+        "issues": "https://github.com/OMouta/rapoPHP/issues",
+        "source": "https://github.com/OMouta/rapoPHP"
+    },
     "bin": [
         "rapo.php"
     ],

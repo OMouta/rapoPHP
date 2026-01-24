@@ -1,3 +1,4 @@
+#!/usr/bin/env php
 <?php
 
 // Project detection
@@ -25,22 +26,16 @@ if ($hasFramework) {
     $store = Rapo\Store::getDefault();
 }
 
+// Current CLI runner for internal calls
+$cli = PHP_BINARY . ' ' . escapeshellarg(realpath(__FILE__));
+
 $command = $argv[1] ?? 'help';
 
-if (!$hasFramework && !in_array($command, ['help', 'new', 'init'])) {
-    die("RapoPHP Framework not found. Run 'php rapo.php new' to install it.\n");
+if (!$hasFramework && !in_array($command, ['help', 'project:init'])) {
+    die("RapoPHP Framework not found. Run 'php rapo.php project:init' to initialize a new project.\n");
 }
 
 switch ($command) {
-    case 'new':
-        $projectName = $argv[2] ?? null;
-        if (!$projectName) die("Usage: php rapo.php new <project-name>\n");
-        
-        echo "Creating new RapoPHP project: $projectName...\n";
-        
-        echo "For now, manually clone the repo: git clone https://github.com/OMouta/rapoPHP.git $projectName\n";
-        break;
-
     case 'serve':
         $port = $argv[2] ?? 8000;
         echo "Rapo Runtime starting on http://localhost:$port\n";
@@ -101,7 +96,8 @@ switch ($command) {
             $composer = [
                 "name" => "app/rapo-project",
                 "require" => [
-                    "php" => ">=8.0"
+                    "php" => ">=8.0",
+                    "rapo/framework" => "^1.0"
                 ],
                 "autoload" => [
                     "psr-4" => [
@@ -125,14 +121,15 @@ switch ($command) {
         $indexPath = ($mode === 'public') ? $projectRoot . '/public/index.php' : $projectRoot . '/index.php';
         if (!file_exists($indexPath)) {
             $relPath = ($mode === 'public') ? '/../' : '/';
-            $index = "<?php\n\nrequire_once __DIR__ . '$relPath" . "rapo/Bootstrap.php';\n\n// Boot RapoPHP with App namespace\n// It will automatically detect Pages/ and Api/ folders in the source directory\n\$app = Rapo\\Bootstrap::boot('App', __DIR__ . '$relPath" . "$srcName');\n\n\$app->handle();\n";
+            $index = "<?php\n\nif (file_exists(__DIR__ . '$relPath" . "vendor/autoload.php')) {\n    require_once __DIR__ . '$relPath" . "vendor/autoload.php';\n} else {\n    require_once __DIR__ . '$relPath" . "rapo/Bootstrap.php';\n}\n\n// Boot RapoPHP with App namespace\n// It will automatically detect Pages/ and Api/ folders in the source directory\n\$app = Rapo\\Bootstrap::boot('App', __DIR__ . '$relPath" . "$srcName');\n\n\$app->handle();\n";
             file_put_contents($indexPath, $index);
             echo "Created $indexPath\n";
         }
 
         // 5. Create .env & .gitignore
         if (!file_exists($projectRoot . '/.env')) {
-            file_put_contents($projectRoot . '/.env', "APP_NAME=RapoApp\nDB_DRIVER=sqlite\nDB_PATH=database.db\n");
+            $env = "APP_NAME=RapoApp\nAPP_ENV=local\nDEBUG=true\n\nDB_DRIVER=sqlite\nDB_DATABASE=database.sqlite\n";
+            file_put_contents($projectRoot . '/.env', $env);
             echo "Created .env\n";
         }
         if (!file_exists($projectRoot . '/.gitignore')) {
@@ -140,7 +137,45 @@ switch ($command) {
             echo "Created .gitignore\n";
         }
 
-        echo "Project initialized successfully with source in '$srcName' and entry point in '$mode' mode!\n";
+        // 6. Create default Layout and Page
+        if (!file_exists("$projectRoot/$srcName/Pages/Layout.php")) {
+            $layout = "<?php\n\nnamespace App\\Pages;\n\nuse Rapo\\Component;\nuse function Rapo\\h;\n\nclass Layout extends Component {\n    public function view(): string {\n        return h('html', ['lang' => 'en'], [\n            h('head', [], [\n                h('title', [], 'My Rapo App'),\n                h('script', ['src' => 'https://cdn.tailwindcss.com'], '')\n            ]),\n            h('body', ['class' => 'bg-gray-50'], \$this->children)\n        ]);\n    }\n}\n";
+            file_put_contents("$projectRoot/$srcName/Pages/Layout.php", $layout);
+            echo "Created $srcName/Pages/Layout.php\n";
+        }
+
+        if (!file_exists("$projectRoot/$srcName/Pages/Page.php")) {
+            $page = "<?php\n\nnamespace App\\Pages;\n\nuse Rapo\\Component;\nuse function Rapo\\h;\n\nclass Page extends Component {\n    public function view(): string {\n        return h('div', ['class' => 'min-h-screen flex items-center justify-center'], [\n            h('div', ['class' => 'text-center'], [\n                h('h1', ['class' => 'text-5xl font-extrabold text-blue-600'], 'RapoPHP'),\n                h('p', ['class' => 'mt-4 text-xl text-gray-600'], 'Welcome to your modern PHP application.')\n            ])\n        ]);\n    }\n}\n";
+            file_put_contents("$projectRoot/$srcName/Pages/Page.php", $page);
+            echo "Created $srcName/Pages/Page.php\n";
+        }
+
+        // 7. Shortcut creation
+        $isVendor = strpos(realpath(__FILE__), 'vendor') !== false;
+        if ($isVendor && !file_exists($projectRoot . '/rapo') && !file_exists($projectRoot . '/rapo.bat')) {
+            echo "\nWould you like to create a shortcut 'rapo' in your project root? [y/n]: ";
+            $createShortcut = strtolower(trim(fgets(STDIN))) === 'y';
+            if ($createShortcut) {
+                if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                    file_put_contents($projectRoot . '/rapo.bat', "@php \"%~dp0vendor/bin/rapo\" %*");
+                    echo "Created rapo.bat\n";
+                }
+                
+                // Always create the bash version too for Git Bash/Linux/macOS users
+                file_put_contents($projectRoot . '/rapo', "#!/usr/bin/env php\n<?php require __DIR__ . '/vendor/bin/rapo';");
+                if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+                    chmod($projectRoot . '/rapo', 0755);
+                }
+                echo "Created rapo shortcut\n";
+            }
+        }
+
+        echo "\nProject initialized successfully!\n";
+        if (file_exists($projectRoot . '/rapo.bat') || file_exists($projectRoot . '/rapo')) {
+            echo "Run 'php rapo serve' to start development.\n";
+        } else {
+            echo "Run 'php vendor/bin/rapo serve' to start development.\n";
+        }
         break;
 
     case 'make:model':
@@ -163,20 +198,20 @@ switch ($command) {
         // Ensure project is initialized
         if (!file_exists($projectRoot . '/composer.json')) {
             echo "Project not initialized. Running project:init first...\n";
-            passthru("php rapo.php project:init");
+            passthru("$cli project:init");
         }
 
         // 1. Create Model
         $modelName = ucfirst($name);
-        passthru("php rapo.php make:model $modelName");
+        passthru("$cli make:model $modelName");
 
         // 2. Create API
         $apiName = $modelName . "s";
-        passthru("php rapo.php make:api $apiName");
+        passthru("$cli make:api $apiName");
 
         // 3. Create Pages
-        passthru("php rapo.php make:page $modelName/Index");
-        passthru("php rapo.php make:page $modelName/Create");
+        passthru("$cli make:page $modelName/Index");
+        passthru("$cli make:page $modelName/Create");
 
         echo "Scaffolding completed for $modelName!\n";
         break;
@@ -426,7 +461,6 @@ switch ($command) {
         echo "RapoPHP Framework CLI\n\n";
         echo "Usage: php rapo.php [command] [args...]\n\n";
         echo "Available commands:\n";
-        echo "  new [name]         Create a totally new project from scratch\n";
         echo "  serve [port]       Start a local development server (default: 8000)\n";
         echo "  project:init       Initialize project structure in current directory\n";
         echo "  db:init            Initialize the database from models\n";
@@ -441,6 +475,11 @@ switch ($command) {
         echo "  make:page          Create a new file-based route page\n";
         echo "  make:layout        Create a root or nested layout\n";
         echo "  make:api           Create a new API route\n";
-        echo "  make:middleware    Create a new middleware class\n";
+        echo "  make:middleware    Create a new middleware class\n\n";
+
+        $isVendor = strpos(realpath(__FILE__), 'vendor') !== false;
+        if ($isVendor && !file_exists($projectRoot . '/rapo') && !file_exists($projectRoot . '/rapo.bat')) {
+            echo "Tip: Run 'php vendor/bin/rapo project:init' to create a root 'rapo' shortcut.\n";
+        }
         break;
 }
