@@ -1,0 +1,76 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "9dfcd10b2ba9879009c119529ce817c7",
+    "packages": [
+        {
+            "name": "rapo/framework",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "../framework",
+                "reference": "2607bd14e7b7b3d258db42f8bfa5f60b50211729"
+            },
+            "require": {
+                "php": ">=8.0"
+            },
+            "bin": [
+                "rapo.php"
+            ],
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Rapo\\": "rapo/"
+                }
+            },
+            "archive": {
+                "exclude": [
+                    "/example",
+                    "/vendor",
+                    ".git"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "OMouta"
+                }
+            ],
+            "description": "A modern, lightweight PHP framework designed to bring the Next.js developer experience to the PHP world.",
+            "homepage": "https://github.com/OMouta/rapoPHP",
+            "keywords": [
+                "components",
+                "file-based-routing",
+                "framework",
+                "nextjs-style",
+                "php"
+            ],
+            "support": {
+                "issues": "https://github.com/OMouta/rapoPHP/issues",
+                "source": "https://github.com/OMouta/rapoPHP"
+            },
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {
+        "rapo/framework": 20
+    },
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=8.0"
+    },
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}

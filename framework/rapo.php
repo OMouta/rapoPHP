@@ -9,10 +9,10 @@ $appNamespace = 'App';
 $hasFramework = false;
 
 // 1. Try local folder (for monorepo development)
-if (file_exists($projectRoot . '/rapo/Bootstrap.php')) {
-    require_once $projectRoot . '/rapo/Bootstrap.php';
+if (file_exists(__DIR__ . '/src/Bootstrap.php')) {
+    require_once __DIR__ . '/src/autoload.php';
     $hasFramework = true;
-    $appPath = is_dir($projectRoot . '/example/src') ? $projectRoot . '/example/src' : $projectRoot . '/src';
+    $appPath = is_dir($projectRoot . '/example/src') ? $projectRoot . '/example/src' : (is_dir($projectRoot . '/src') ? $projectRoot . '/src' : $projectRoot);
 } 
 // 2. Try vendor (for installed projects)
 elseif (file_exists($projectRoot . '/vendor/autoload.php')) {

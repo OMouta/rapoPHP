@@ -23,9 +23,16 @@
     "bin": [
         "rapo.php"
     ],
+    "archive": {
+        "exclude": [
+            "/example",
+            "/vendor",
+            ".git"
+        ]
+    },
     "autoload": {
         "psr-4": {
-            "Rapo\\": "rapo/"
+            "Rapo\\": "src/"
         }
     },
     "require": {
