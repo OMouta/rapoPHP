@@ -1,0 +1,22 @@
+{
+    "name": "app/example",
+    "description": "Example App for RapoPHP",
+    "require": {
+        "php": ">=8.0",
+        "rapo/framework": "@dev"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}

@@ -1,30 +1,52 @@
 <?php
 
-require_once __DIR__ . '/rapo/Bootstrap.php';
-
 // Project detection
-$projectRoot = __DIR__;
+$projectRoot = getcwd();
 $appNamespace = 'App';
 
-// Robust app path detection
-$appPath = $projectRoot;
-$possibleAppPaths = ['src', 'app', 'lib'];
-foreach ($possibleAppPaths as $possible) {
-    if (is_dir($projectRoot . '/' . $possible)) {
-        $appPath = $projectRoot . '/' . $possible;
-        break;
-    }
+// Try to find the framework
+$hasFramework = false;
+
+// 1. Try local folder (for monorepo development)
+if (file_exists($projectRoot . '/rapo/Bootstrap.php')) {
+    require_once $projectRoot . '/rapo/Bootstrap.php';
+    $hasFramework = true;
+    $appPath = is_dir($projectRoot . '/example/src') ? $projectRoot . '/example/src' : $projectRoot . '/src';
+} 
+// 2. Try vendor (for installed projects)
+elseif (file_exists($projectRoot . '/vendor/autoload.php')) {
+    require_once $projectRoot . '/vendor/autoload.php';
+    $hasFramework = class_exists('\\Rapo\\Bootstrap');
+    $appPath = $projectRoot . '/src';
 }
 
-// Public directory detection
-$publicDir = is_dir($projectRoot . '/public') ? 'public' : '.';
-
-$app = Rapo\Bootstrap::boot($appNamespace, $appPath);
-$store = Rapo\Store::getDefault();
+if ($hasFramework) {
+    $app = Rapo\Bootstrap::boot($appNamespace, $appPath);
+    $store = Rapo\Store::getDefault();
+}
 
 $command = $argv[1] ?? 'help';
 
+if (!$hasFramework && !in_array($command, ['help', 'new', 'init'])) {
+    die("RapoPHP Framework not found. Run 'php rapo.php new' to install it.\n");
+}
+
 switch ($command) {
+    case 'new':
+        $projectName = $argv[2] ?? null;
+        if (!$projectName) die("Usage: php rapo.php new <project-name>\n");
+        
+        echo "Creating new RapoPHP project: $projectName...\n";
+        
+        echo "For now, manually clone the repo: git clone https://github.com/OMouta/rapoPHP.git $projectName\n";
+        break;
+
+    case 'serve':
+        $port = $argv[2] ?? 8000;
+        echo "Rapo Runtime starting on http://localhost:$port\n";
+        $index = is_dir($projectRoot . '/example') ? 'example/index.php' : 'index.php';
+        passthru("php -S localhost:$port $index");
+        break;
     case 'db:init':
         $db = $store->get('db');
         $modelsDir = $appPath . '/Models';
@@ -401,13 +423,16 @@ switch ($command) {
         break;
 
     default:
+        echo "RapoPHP Framework CLI\n\n";
+        echo "Usage: php rapo.php [command] [args...]\n\n";
         echo "Available commands:\n";
-        echo "  project:init [root|public]  Initialize project (default: root for Apache)\n";
-        echo "  db:init                     Initialize the database from models\n";
-        echo "  migrate                     Run pending migrations\n";
-        echo "  migrate:rollback            Rollback the last migration batch\n";
+        echo "  new [name]         Create a totally new project from scratch\n";
+        echo "  serve [port]       Start a local development server (default: 8000)\n";
+        echo "  project:init       Initialize project structure in current directory\n";
+        echo "  db:init            Initialize the database from models\n";
+        echo "  migrate            Run pending migrations\n";
+        echo "  migrate:rollback   Rollback the last migration batch\n";
         echo "  scaffold [name]    Create model, api, and pages for a resource\n";
-        echo "  serve [port]       Start a local development server\n";
         echo "  make:model         Create a new model\n";
         echo "  make:migration     Create a new migration file\n";
         echo "  make:auth          Scaffold authentication (user, login, signup)\n";

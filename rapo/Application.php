@@ -248,6 +248,14 @@ class Application {
         // Fallback error reporting
         error_log($e->getMessage());
         $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
+
+        // Vite-style critical overlay for non-404 errors in debug mode
+        if ($code !== 404 && Env::get('DEBUG') === 'true') {
+            Debug::handleError(E_USER_ERROR, $e->getMessage(), $e->getFile(), $e->getLine(), $e->getTrace());
+            $response->setStatusCode($code)->setContent(Debug::renderDevTools())->send();
+            return;
+        }
+
         $isSpa = $request->getHeader('X-Rapo-Spa') === 'true';
         $router = $this->store->get('router');
 

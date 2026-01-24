@@ -23,7 +23,7 @@ abstract class Component {
         }
     }
 
-    public static function getRegisteredAssets(string $type = null) {
+    public static function getRegisteredAssets(?string $type = null) {
         if ($type) return self::$registeredAssets[$type] ?? [];
         return self::$registeredAssets;
     }

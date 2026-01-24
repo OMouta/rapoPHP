@@ -3,10 +3,12 @@
     "description": "A cool and good simple PHP framework.",
     "type": "library",
     "license": "MIT",
+    "bin": [
+        "rapo.php"
+    ],
     "autoload": {
         "psr-4": {
-            "Rapo\\": "rapo/",
-            "App\\": "src/"
+            "Rapo\\": "rapo/"
         }
     },
     "require": {

@@ -13,6 +13,12 @@ class Bootstrap {
             Env::load($envPath);
         }
 
+        // Enable Debug mode if set
+        $debug = Env::get('DEBUG');
+        if ($debug === 'true' || $debug === true || $debug === '1') {
+            Debug::enable();
+        }
+
         // Register App autoloader if path provided
         if ($appPath) {
             spl_autoload_register(function ($class) use ($appNamespace, $appPath) {

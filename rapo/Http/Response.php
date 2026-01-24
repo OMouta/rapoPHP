@@ -12,6 +12,10 @@ class Response {
         return $this;
     }
 
+    public function getContent() {
+        return $this->content;
+    }
+
     public function setStatusCode($code) {
         $this->statusCode = $code;
         return $this;
@@ -20,6 +24,10 @@ class Response {
     public function setHeader($name, $value) {
         $this->headers[$name] = $value;
         return $this;
+    }
+
+    public function getHeader($name) {
+        return $this->headers[$name] ?? null;
     }
 
     public static function json($data, $statusCode = 200) {
@@ -37,6 +45,23 @@ class Response {
     }
 
     public function send() {
+        // Inject Debug Tools if enabled
+        if (class_exists(\Rapo\Debug::class)) {
+            $contentType = $this->headers['Content-Type'] ?? '';
+            $isJson = stripos($contentType, 'application/json') !== false;
+            
+            if (!$isJson) {
+                $debugHtml = \Rapo\Debug::renderDevTools();
+                if ($debugHtml) {
+                    if (is_string($this->content) && str_contains($this->content, '</body>')) {
+                        $this->content = str_replace('</body>', $debugHtml . '</body>', $this->content);
+                    } else if (is_string($this->content)) {
+                        $this->content .= $debugHtml;
+                    }
+                }
+            }
+        }
+
         http_response_code($this->statusCode);
         foreach ($this->headers as $name => $value) {
             header("$name: $value");
