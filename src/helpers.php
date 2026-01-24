@@ -90,7 +90,34 @@ function csrf_field(): string {
 }
 
 function session() {
-    return new \Rapo\Http\Session();
+    return \Rapo\Store::getDefault()->get('session') ?: new \Rapo\Http\Session();
+}
+
+function request(): \Rapo\Http\Request {
+    return \Rapo\Store::getDefault()->get('request');
+}
+
+function post(?string $key = null, $default = null) {
+    return request()->getPost($key, $default);
+}
+
+function get(?string $key = null, $default = null) {
+    return request()->getQuery($key, $default);
+}
+
+function old(string $key, $default = null) {
+    $old = session()->get('old', []); // Note: getFlash might have cleared it already if called elsewhere
+    return $old[$key] ?? $default;
+}
+
+function errors(?string $key = null) {
+    $errors = session()->get('errors', []);
+    if ($key) return $errors[$key] ?? null;
+    return $errors;
+}
+
+function cache() {
+    return \Rapo\Store::getDefault()->get('cache');
 }
 
 function redirect(string $url) {

@@ -15,6 +15,7 @@ class Store {
     protected function registerDefaults() {
         $this->setShared('request', \Rapo\Http\Request::class);
         $this->setShared('response', \Rapo\Http\Response::class);
+        $this->setShared('session', \Rapo\Http\Session::class);
         $this->setShared('router', \Rapo\Router::class);
         $this->setShared('db', function() {
             return new \Rapo\Database(['driver' => 'sqlite', 'path' => __DIR__ . '/../database.sqlite']);

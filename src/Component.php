@@ -79,6 +79,20 @@ abstract class Component {
     }
 
     /**
+     * Session hook - easy session management
+     */
+    protected function useSession() {
+        return $this->useStore('session');
+    }
+
+    /**
+     * Cache hook - access to the caching layer
+     */
+    protected function useCache() {
+        return $this->useStore('cache');
+    }
+
+    /**
      * Store hook - get global services
      */
     protected function useStore($service) {

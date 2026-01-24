@@ -13,8 +13,9 @@ RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js d
 - **Private Folders**: Prefix folders with `_` (e.g., `_components`) to opt them out of routing.
 - **Route Groups**: Wrap folders in `()` (e.g., `(marketing)`) to organize routes without affecting the URL.
 - **Dynamic Routes**: Full support for `[slug]` and catch-all `[...slug]` segments.
-- **Special Files**: Built-in support for `Layout.php`, `Template.php`, `Error.php`, and `NotFound.php` at any level.
-- **Hierarchical Layouts**: Layouts nest automatically following the folder structure.
+- **Special Files**: Built-in support for `Layout.php`, `Template.php`, `Error.php`, `NotFound.php`, `Loading.php`, and `Action.php` at any level.
+- **Hierarchical Layouts & Middleware**: Layouts and Middleware nest automatically following the folder structure.
+- **Server Actions**: Define server-side logic in `Action.php` to handle form submissions directly in your route folder.
 
 ### Component-Centric UI
 
@@ -25,15 +26,18 @@ RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js d
   - `useHead()`: Declarative metadata management.
   - `useState()`: Persisted state across requests.
   - `useForm()`: Simplified form handling and validation.
+  - `useSession()`: Easy session management.
+  - `useCache()`: Access to the built-in caching layer.
 - **Nested Layouts**: Intuitively wrap pages with layouts at any level.
 
 ### Performance & DX
 
 - **Rapo-Live**: Livewire-style server-side reactivity for interactive components.
 - **Data Fetching**: Built-in `getServerSideProps` for pre-rendering data.
-- **ISR & Caching**: Incremental Static Regeneration support for blazing fast load times.
-- **Modern CLI**: Scaffolding that generates modern component-based code.
+- **ISR & Caching**: Incremental Static Regeneration support for blazing fast load times via the built-in `Cache` service.
+- **Modern CLI**: Scaffolding for pages, components, models, middleware, and server actions.
 - **Image Optimization**: Built-in `Image` component for lazy-loading and optimization.
+- **Mail Engine**: Use Rapo Components to design and send beautiful responsive emails.
 
 ### Modern Data & Auth
 
@@ -63,6 +67,12 @@ php vendor/bin/rapo make:page blog/[slug]
 
 # Create a new component
 php vendor/bin/rapo make:component Navbar
+
+# Create an API route
+php vendor/bin/rapo make:api-route status
+
+# Create a Server Action
+php vendor/bin/rapo make:action contact
 
 # Run migrations
 php vendor/bin/rapo migrate
