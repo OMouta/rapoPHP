@@ -1,6 +1,6 @@
-# RapoPHP
-
 <img width="1408" height="768" alt="rapophpbanner" src="https://github.com/user-attachments/assets/fdfc2071-7c85-43b7-aade-b81d9cfbe18b" />
+
+---
 
 RapoPHP is a modern, lightweight PHP framework designed to bring the **Next.js developer experience** to the PHP world. It moves away from traditional MVC patterns in favor of a **component-centric architecture**, file-based routing, and built-in reactivity.
 
