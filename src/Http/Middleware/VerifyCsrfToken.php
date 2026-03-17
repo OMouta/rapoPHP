@@ -6,9 +6,9 @@ use Rapo\Http\Request;
 use Rapo\Http\Response;
 
 class VerifyCsrfToken {
-    public function handle(Request $request, Response $response) {
+    public function handle(Request $request, \Closure $next) {
         if (in_array($request->getMethod(), ['GET', 'HEAD', 'OPTIONS'])) {
-            return true;
+            return $next($request);
         }
 
         $token = $request->getPost('_token') ?: $request->getHeader('X-CSRF-TOKEN');
@@ -19,6 +19,6 @@ class VerifyCsrfToken {
             throw new \Exception('CSRF token mismatch.', 403);
         }
 
-        return true;
+        return $next($request);
     }
 }

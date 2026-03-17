@@ -268,19 +268,63 @@ switch ($command) {
         break;
 
     case 'add:tailwind':
-        echo "Adding Tailwind CSS support...\n";
+    case 'add:vite':
+        echo "Adding Vite and Tailwind CSS support...\n";
         
-        $tailwindConfig = "/** @type {import('tailwindcss').Config} */\nmodule.exports = {\n  content: [\n    './$srcName/**/*.php',\n    './rapo/**/*.php',\n    './*.php',\n  ],\n  theme: {\n    extend: {},\n  },\n  plugins: [],\n}\n";
+        // 1. Create package.json if not exists
+        if (!file_exists($projectRoot . '/package.json')) {
+            $packageJson = [
+                "private" => true,
+                "scripts" => [
+                    "dev" => "vite",
+                    "build" => "vite build"
+                ],
+                "devDependencies" => [
+                    "autoprefixer" => "^10.4.16",
+                    "postcss" => "^8.4.31",
+                    "tailwindcss" => "^3.3.5",
+                    "vite" => "^5.0.0"
+                ]
+            ];
+            file_put_contents($projectRoot . '/package.json', json_encode($packageJson, JSON_PRETTY_PRINT));
+            echo "Created package.json\n";
+        }
+
+        // 2. Create vite.config.js
+        $viteConfig = "import { defineConfig } from 'vite';\nimport path from 'path';\n\nexport default defineConfig({\n  build: {\n    outDir: 'public/build',\n    manifest: true,\n    rollupOptions: {\n      input: 'src/Assets/app.js',\n    },\n  },\n  server: {\n    origin: 'http://localhost:5173',\n  },\n});\n";
+        file_put_contents($projectRoot . '/vite.config.js', $viteConfig);
+        echo "Created vite.config.js\n";
+
+        // 3. Create tailwind.config.js
+        $tailwindConfig = "/** @type {import('tailwindcss').Config} */\nexport default {\n  content: [\n    './$srcName/**/*.php',\n    './*.php',\n  ],\n  theme: {\n    extend: {},\n  },\n  plugins: [],\n}\n";
         file_put_contents($projectRoot . '/tailwind.config.js', $tailwindConfig);
-        
-        $postcssConfig = "module.exports = {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n";
+        echo "Created tailwind.config.js\n";
+
+        // 4. Create postcss.config.js
+        $postcssConfig = "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n";
         file_put_contents($projectRoot . '/postcss.config.js', $postcssConfig);
-        
-        $cssFile = $appPath . "/Styles/app.css";
-        if (!is_dir(dirname($cssFile))) mkdir(dirname($cssFile), 0777, true);
-        file_put_contents($cssFile, "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n");
-        
-        echo "Tailwind CSS configured. You can now use 'npx tailwindcss -i ./$srcName/Styles/app.css -o ./public/app.css --watch' to build your styles.\n";
+        echo "Created postcss.config.js\n";
+
+        // 5. Create Assets directory and entry points
+        $assetsDir = $appPath . "/Assets";
+        if (!is_dir($assetsDir)) {
+            mkdir($assetsDir, 0777, true);
+        }
+
+        if (!file_exists($assetsDir . "/app.css")) {
+            file_put_contents($assetsDir . "/app.css", "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n");
+            echo "Created $srcName/Assets/app.css\n";
+        }
+
+        if (!file_exists($assetsDir . "/app.js")) {
+            file_put_contents($assetsDir . "/app.js", "import './app.css';\n\nconsole.log('RapoPHP Vite working!');\n");
+            echo "Created $srcName/Assets/app.js\n";
+        }
+
+        echo "\nVite and Tailwind CSS configured successfully!\n";
+        echo "1. Run 'npm install' to install dependencies.\n";
+        echo "2. Run 'npm run dev' to start the Vite development server.\n";
+        echo "3. Use function vite() in your Layout to include assets.\n";
         break;
 
     case 'serve':
@@ -389,7 +433,7 @@ switch ($command) {
         $fileName = "{$timestamp}_{$name}.php";
         $file = "$migrationsDir/$fileName";
         
-        $tpl = "<?php\n\nnamespace $appNamespace\\Migrations;\n\nuse Rapo\\Migration;\n\nclass $name extends Migration {\n    public function up() {\n        // \$this->query(\"CREATE TABLE ...\");\n    }\n\n    public function down() {\n        // \$this->query(\"DROP TABLE ...\");\n    }\n}\n";
+        $tpl = "<?php\n\nnamespace $appNamespace\\Migrations;\n\nuse Rapo\\Migration;\nuse Rapo\\Schema;\nuse Rapo\\Blueprint;\n\nclass $name extends Migration {\n    public function up() {\n        Schema::create('" . strtolower($name) . "', function(Blueprint \$table) {\n            \$table->id();\n            \$table->timestamps();\n        });\n    }\n\n    public function down() {\n        Schema::dropIfExists('" . strtolower($name) . "');\n    }\n}\n";
         file_put_contents($file, $tpl);
         echo "Migration created at $file\n";
         break;
@@ -409,7 +453,7 @@ switch ($command) {
         $timestamp = date('Y_m_d_His');
         $migFile = $appPath . "/Migrations/{$timestamp}_CreateUsersTable.php";
         if (!is_dir(dirname($migFile))) mkdir(dirname($migFile), 0777, true);
-        $migTpl = "<?php\n\nnamespace $appNamespace\\Migrations;\n\nuse Rapo\\Migration;\n\nclass CreateUsersTable extends Migration {\n    public function up() {\n        \$this->query(\"CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT UNIQUE, password TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)\");\n    }\n\n    public function down() {\n        \$this->query(\"DROP TABLE users\");\n    }\n}\n";
+        $migTpl = "<?php\n\nnamespace $appNamespace\\Migrations;\n\nuse Rapo\\Migration;\nuse Rapo\\Schema;\nuse Rapo\\Blueprint;\n\nclass CreateUsersTable extends Migration {\n    public function up() {\n        Schema::create('users', function(Blueprint \$table) {\n            \$table->id();\n            \$table->string('name');\n            \$table->string('email')->unique();\n            \$table->string('password');\n            \$table->timestamps();\n        });\n    }\n\n    public function down() {\n        Schema::dropIfExists('users');\n    }\n}\n";
         file_put_contents($migFile, $migTpl);
         echo "Created migration: $migFile\n";
 
@@ -521,7 +565,8 @@ switch ($command) {
         echo "  make:model         Create a new model\n";
         echo "  make:migration     Create a new migration file\n";
         echo "  make:auth          Scaffold authentication (user, login, signup)\n";
-        echo "  add:tailwind       Initialize Tailwind CSS configuration\n";
+        echo "  add:vite           Initialize Vite and Tailwind CSS support\n";
+        echo "  add:tailwind       (Alias for add:vite)\n";
         echo "  make:component     Create a new component structure\n";
         echo "  make:page          Create a new file-based route page\n";
         echo "  make:layout        Create a root or nested layout\n";

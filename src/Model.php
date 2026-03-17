@@ -9,6 +9,7 @@ abstract class Model {
         'created_at' => 'DATETIME DEFAULT CURRENT_TIMESTAMP'
     ];
     protected $data = [];
+    public $magicApi = false;
 
     public static function getTable() {
         return static::$table;
@@ -47,19 +48,35 @@ abstract class Model {
         return static::query()->orderBy($column, $direction);
     }
 
+    public static function create(array $data) {
+        $instance = new static($data);
+        $instance->save();
+        return $instance;
+    }
+
+    public function update(array $data) {
+        foreach ($data as $key => $value) {
+            $this->$key = $value;
+        }
+        return $this->save();
+    }
+
     public function save() {
         $db = static::getDb();
+        $fields = $this->data;
+        unset($fields['id']);
+
         if (isset($this->data['id'])) {
             // Update
-            $fields = array_keys($this->data);
-            $set = implode(', ', array_map(fn($f) => "$f = ?", $fields));
+            $sqlFields = array_keys($fields);
+            $set = implode(', ', array_map(fn($f) => "$f = ?", $sqlFields));
             $sql = "UPDATE " . static::$table . " SET $set WHERE id = ?";
-            $db->query($sql, [...array_values($this->data), $this->data['id']]);
+            $db->query($sql, [...array_values($fields), $this->data['id']]);
         } else {
             // Insert
-            $fields = array_keys($this->data);
-            $placeholders = implode(', ', array_fill(0, count($fields), '?'));
-            $sql = "INSERT INTO " . static::$table . " (" . implode(', ', $fields) . ") VALUES ($placeholders)";
+            $sqlFields = array_keys($this->data);
+            $placeholders = implode(', ', array_fill(0, count($sqlFields), '?'));
+            $sql = "INSERT INTO " . static::$table . " (" . implode(', ', $sqlFields) . ") VALUES ($placeholders)";
             $db->query($sql, array_values($this->data));
             $this->data['id'] = $db->lastInsertId();
         }
@@ -73,10 +90,20 @@ abstract class Model {
     }
 
     public function __get($name) {
+        // Accessor: getAttributeNameAttribute
+        $method = 'get' . str_replace('_', '', ucwords($name, '_')) . 'Attribute';
+        if (method_exists($this, $method)) {
+            return $this->$method($this->data[$name] ?? null);
+        }
         return $this->data[$name] ?? null;
     }
 
     public function __set($name, $value) {
+        // Mutator: setAttributeNameAttribute
+        $method = 'set' . str_replace('_', '', ucwords($name, '_')) . 'Attribute';
+        if (method_exists($this, $method)) {
+            $value = $this->$method($value);
+        }
         $this->data[$name] = $value;
     }
 

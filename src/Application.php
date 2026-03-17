@@ -15,7 +15,14 @@ class Application {
 
     public function use($middleware) {
         $store = Store::getDefault();
-        $guards = $store->get('config')['middleware']['guards'] ?? [];
+        $config = $store->get('config');
+        $guards = [];
+        
+        if ($config instanceof Config) {
+            $guards = $config->get('rapo.middleware.guards', []);
+        } elseif (is_array($config)) {
+            $guards = $config['middleware']['guards'] ?? [];
+        }
         
         if (is_string($middleware) && isset($guards[$middleware])) {
             $mapped = $guards[$middleware];
@@ -41,7 +48,6 @@ class Application {
         $response = $this->store->get('response');
 
         try {
-            $instance = null;
             // Global middleware.php support
             $this->loadGlobalMiddleware();
 
@@ -65,164 +71,22 @@ class Application {
                 $this->store->get('translation')->load($match['paths']);
             }
 
-            // Run Middlewares
-            foreach ($this->middlewares as $middleware) {
-                $result = is_callable($middleware) ? $middleware($request, $response) : (new $middleware())->handle($request, $response);
-                if ($result === false) return; // Middleware halted execution
-            }
+            // Run Middlewares via Pipeline
+            $finalResponse = (new Pipeline(Container::getInstance()))
+                ->send($request)
+                ->through($this->middlewares)
+                ->then(function ($request) use ($match, $response, $uri, $method) {
+                    return $this->dispatchToHandler($match, $request, $response, $uri, $method);
+                });
 
-            // ISR Cache Check
-            if ($method === 'GET' && $cachedContent = $this->getCachedPage($uri)) {
-                $response->setContent($cachedContent)->send();
-                return;
-            }
-
-            // Internal Rapo-Live handling
-            if (str_ends_with($uri, '/_rapo/live') && $method === 'POST') {
-                $this->handleLiveRequest();
-                return;
-            }
-
-            $handler = $match['handler'];
-            $params = $match['params'];
-            $isApi = $match['is_api'] ?? false;
-
-            // Handle Server Actions (Action.php or _action)
-            if ($method === 'POST') {
-                $this->handleServerAction($match, $request, $response);
-            }
-
-            if ($handler instanceof \Closure) {
-                $content = call_user_func_array($handler, $params);
-            } elseif ($handler === 'markdown') {
-                $md = file_get_contents($match['markdown_file']);
-                // Very basic markdown parser for the demo
-                $content = $this->parseMarkdown($md);
-            } elseif (is_array($handler) || is_string($handler)) {
-                $controllerClass = is_array($handler) ? $handler[0] : $handler;
-                $action = is_array($handler) ? $handler[1] : 'index';
-                
-                // Reflection for Attributes (Validation DTO support)
-                $reflection = new \ReflectionClass($controllerClass);
-                if ($reflection->hasMethod($action)) {
-                    $methodRef = $reflection->getMethod($action);
-                    $attributes = $methodRef->getAttributes(\Rapo\Http\Attributes\Validate::class);
-                    foreach ($attributes as $attr) {
-                        $validate = $attr->newInstance();
-                        $request->validate($validate->rules);
-                    }
-                }
-
-                // SEO Metadata support (Static)
-                if (method_exists($controllerClass, 'getMetadata')) {
-                    $metadata = $controllerClass::getMetadata($request, $params);
-                    $head = $this->store->get('head');
-                    if (isset($metadata['title'])) $head->setTitle($metadata['title']);
-                    if (isset($metadata['description'])) $head->addTag("<meta name=\"description\" content=\"{$metadata['description']}\">");
-                }
-
-                $instance = Container::getInstance()->resolve($controllerClass);
-
-                // If it's a Component, we can just render it. If it's a Controller, we call the action.
-                if ($instance instanceof \Rapo\Component) {
-                    $instance->props = array_merge($instance->props ?? [], $params);
-                    
-                    // Server-side Data Fetching (getServerSideProps)
-                    if (method_exists($instance, 'getServerSideProps')) {
-                        // Before slow data fetching, we could theoretically send Loading.php
-                        // In PHP this requires Ob_flush which is tricky with Nested Layouts.
-                        // For now we just run it.
-                        $extraProps = $instance->getServerSideProps($request, $params);
-                        $instance->props = array_merge($instance->props, $extraProps);
-                    }
-                    
-                    $content = $instance->render();
-                } else {
-                    // Controller Middlewares (Route Protection)
-                    if (property_exists($instance, 'middleware')) {
-                        foreach ((array)$instance->middleware as $m) {
-                            $mInstance = is_string($m) ? new $m() : $m;
-                            $res = is_callable($mInstance) ? $mInstance($request, $response) : $mInstance->handle($request, $response);
-                            if ($res === false) return;
-                        }
-                    }
-
-                    // Automatic Page-to-API Mirroring
-                    if (!$isApi && str_contains($request->getHeader('Accept') ?? '', 'application/json')) {
-                        $mirrorData = property_exists($instance, 'props') ? $instance->props : [];
-                        if (method_exists($instance, 'getServerSideProps')) {
-                            $mirrorData = array_merge($mirrorData, $instance->getServerSideProps($request, $params));
-                        }
-                        $response->json($mirrorData)->send();
-                        return;
-                    }
-
-                    // Server Actions support (Legacy _action)
-                    if ($method === 'POST' && $actionName = $request->getPost('_action')) {
-                        if (method_exists($instance, $actionName)) {
-                            $data = $request->getPost();
-                            unset($data['_action']);
-                            $instance->$actionName($data);
-                        }
-                    }
-                    
-                    // Server-side Side Effects (getServerSideProps)
-                    $extraProps = [];
-                    if (method_exists($instance, 'getServerSideProps')) {
-                        $extraProps = $instance->getServerSideProps($request, $params);
-                        if (property_exists($instance, 'props')) {
-                            $instance->props = array_merge($instance->props, $extraProps);
-                        }
-                    }
-
-                    // For API routes, we pass the request as the first argument
-                    $args = $isApi ? array_values(array_merge([$request], $params)) : array_values($params);
-                    $content = call_user_func_array([$instance, $action], $args);
-                }
-            }
-
-            // Handle API responses
-            if ($isApi) {
-                if (!$content instanceof \Rapo\Http\Response) {
-                    $response->json($content)->send();
-                } else {
-                    $content->send();
-                }
-                return;
-            }
-
-            // Apply Layouts (Nested)
-            if (is_string($content) && !str_contains($content, '<html')) {
-                $content = $this->applyNestedLayouts($content, $match, $request);
-            }
-
-            // Inject Debug Toolbar
-            if (Env::get('DEBUG') === 'true' && is_string($content)) {
-                Debug::setContext([
-                    'hierarchy' => $match['hierarchy'] ?? [],
-                    'props' => (isset($instance) && property_exists($instance, 'props')) ? $instance->props : []
-                ]);
-                
-                $toolbar = Debug::renderToolbar();
-                if (str_contains($content, '</body>')) {
-                    $content = str_replace('</body>', $toolbar . '</body>', $content);
-                } elseif ($request->getHeader('X-Rapo-Spa') === 'true') {
-                    $content .= $toolbar;
-                }
-            }
-
-            // ISR Cache Save (Move to after layouts are applied)
-            if ($method === 'GET' && $instance && isset($instance->revalidate)) {
-                $this->cachePage($uri, $content, $instance->revalidate);
-            }
-
-            if ($content instanceof \Rapo\Http\Response) {
-                $content->send();
-            } elseif (is_array($content) || is_object($content)) {
+            // Handle the response if not already sent
+            if ($finalResponse instanceof \Rapo\Http\Response) {
+                $finalResponse->send();
+            } elseif (is_array($finalResponse) || is_object($finalResponse)) {
                 $response->setHeader('Content-Type', 'application/json');
-                $response->setContent(json_encode($content))->send();
-            } else {
-                $response->setContent((string)$content)->send();
+                $response->setContent(json_encode($finalResponse))->send();
+            } elseif ($finalResponse !== null) {
+                $response->setContent((string)$finalResponse)->send();
             }
 
         } catch (\Throwable $e) {
@@ -296,6 +160,42 @@ class Application {
         return "<div class=\"prose mx-auto py-10\">$html</div>";
     }
 
+    protected function handleMagicApi($match, $request) {
+        $modelName = $match['model'];
+        $id = $match['id'] ?? null;
+        $method = $request->getMethod();
+        
+        $modelClass = 'App\\Models\\' . $modelName;
+        if (!class_exists($modelClass)) {
+            throw new \Exception("Model $modelName not found", 404);
+        }
+
+        // Security: Check if model opts into Magic API
+        $reflection = new \ReflectionClass($modelClass);
+        if (!$reflection->hasProperty('magicApi') || !$reflection->getProperty('magicApi')->getValue(new $modelClass)) {
+            throw new \Exception("Magic API access denied for $modelName", 403);
+        }
+
+        switch ($method) {
+            case 'GET':
+                return $id ? $modelClass::find($id) : $modelClass::all();
+            case 'POST':
+                return $modelClass::create($request->getPost());
+            case 'PUT':
+            case 'PATCH':
+                if (!$id) throw new \Exception("ID required for update", 400);
+                $model = $modelClass::find($id);
+                if (!$model) throw new \Exception("Not found", 404);
+                $model->update($request->getPost());
+                return $model;
+            case 'DELETE':
+                if (!$id) throw new \Exception("ID required for delete", 400);
+                $model = $modelClass::find($id);
+                if ($model) $model->delete();
+                return ['success' => true];
+        }
+    }
+
     protected function applyNestedLayouts($content, $match, $request): string {
         $isSpa = $request->getHeader('X-Rapo-Spa') === 'true';
         $layouts = [];
@@ -342,8 +242,14 @@ class Application {
     }
 
     protected function handleError(\Throwable $e, $request, $response) {
-        // Fallback error reporting
-        error_log($e->getMessage());
+        // Log the error using the new Log class
+        \Rapo\Log::error($e->getMessage(), [
+            'exception' => get_class($e),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'uri' => $request ? $request->getUri() : 'unknown'
+        ]);
+        
         $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
 
         // Vite-style critical overlay for non-404 errors in debug mode
@@ -423,5 +329,130 @@ class Application {
         } else {
             $response->setStatusCode(400)->setContent("Invalid Component")->send();
         }
+    }
+
+    protected function dispatchToHandler($match, $request, $response, $uri, $method) {
+        $instance = null;
+        $handler = $match['handler'];
+        $params = $match['params'];
+        $isApi = $match['is_api'] ?? false;
+
+        // ISR Cache Check
+        if ($method === 'GET' && $cachedContent = $this->getCachedPage($uri)) {
+            return $response->setContent($cachedContent);
+        }
+
+        // Internal Rapo-Live handling
+        if (str_ends_with($uri, '/_rapo/live') && $method === 'POST') {
+            return $this->handleLiveRequest();
+        }
+
+        // Handle Server Actions (Action.php or _action)
+        if ($method === 'POST') {
+            $actionRes = $this->handleServerAction($match, $request, $response);
+            if ($actionRes instanceof \Rapo\Http\Response) return $actionRes;
+        }
+
+        if ($handler === 'magic_api') {
+            $content = $this->handleMagicApi($match, $request);
+        } elseif ($handler instanceof \Closure) {
+            $content = call_user_func_array($handler, $params);
+        } elseif ($handler === 'markdown') {
+            $md = file_get_contents($match['markdown_file']);
+            $content = $this->parseMarkdown($md);
+        } elseif (is_array($handler) || is_string($handler)) {
+            $controllerClass = is_array($handler) ? $handler[0] : $handler;
+            $action = is_array($handler) ? $handler[1] : 'index';
+            
+            $reflection = new \ReflectionClass($controllerClass);
+            if ($reflection->hasMethod($action)) {
+                $methodRef = $reflection->getMethod($action);
+                $attributes = $methodRef->getAttributes(\Rapo\Http\Attributes\Validate::class);
+                foreach ($attributes as $attr) {
+                    $validate = $attr->newInstance();
+                    $request->validate($validate->rules);
+                }
+            }
+
+            if (method_exists($controllerClass, 'getMetadata')) {
+                $metadata = $controllerClass::getMetadata($request, $params);
+                $head = $this->store->get('head');
+                if (isset($metadata['title'])) $head->setTitle($metadata['title']);
+                if (isset($metadata['description'])) $head->addTag("<meta name=\"description\" content=\"{$metadata['description']}\">");
+            }
+
+            $instance = Container::getInstance()->resolve($controllerClass);
+
+            if ($instance instanceof \Rapo\Component) {
+                $instance->props = array_merge($instance->props ?? [], $params);
+                if (method_exists($instance, 'getServerSideProps')) {
+                    $extraProps = $instance->getServerSideProps($request, $params);
+                    $instance->props = array_merge($instance->props, $extraProps);
+                }
+                $content = $instance->render();
+            } else {
+                // Controller-specific Middlewares
+                if (property_exists($instance, 'middleware')) {
+                    foreach ((array)$instance->middleware as $m) {
+                        $mInstance = is_string($m) ? new $m() : $m;
+                        $res = is_callable($mInstance) ? $mInstance($request, $response) : $mInstance->handle($request, function($r) { return true; });
+                        if ($res === false) return null;
+                    }
+                }
+
+                if (!$isApi && str_contains($request->getHeader('Accept') ?? '', 'application/json')) {
+                    $mirrorData = property_exists($instance, 'props') ? $instance->props : [];
+                    if (method_exists($instance, 'getServerSideProps')) {
+                        $mirrorData = array_merge($mirrorData, $instance->getServerSideProps($request, $params));
+                    }
+                    return $response->json($mirrorData);
+                }
+
+                if ($method === 'POST' && $actionName = $request->getPost('_action')) {
+                    if (method_exists($instance, $actionName)) {
+                        $data = $request->getPost();
+                        unset($data['_action']);
+                        $instance->$actionName($data);
+                    }
+                }
+                
+                if (method_exists($instance, 'getServerSideProps')) {
+                    $extraProps = $instance->getServerSideProps($request, $params);
+                    if (property_exists($instance, 'props')) {
+                        $instance->props = array_merge($instance->props, $extraProps);
+                    }
+                }
+
+                $args = $isApi ? array_values(array_merge([$request], $params)) : array_values($params);
+                $content = call_user_func_array([$instance, $action], $args);
+            }
+        }
+
+        if ($isApi) {
+            return ($content instanceof \Rapo\Http\Response) ? $content : $response->json($content);
+        }
+
+        if (is_string($content) && !str_contains($content, '<html')) {
+            $content = $this->applyNestedLayouts($content, $match, $request);
+        }
+
+        if (Env::get('DEBUG') === 'true' && is_string($content)) {
+            Debug::setContext([
+                'hierarchy' => $match['hierarchy'] ?? [],
+                'props' => (isset($instance) && property_exists($instance, 'props')) ? $instance->props : []
+            ]);
+            $toolbar = Debug::renderToolbar();
+            if (str_contains($content, '</body>')) {
+                $content = str_replace('</body>', $toolbar . '</body>', $content);
+            } elseif ($request->getHeader('X-Rapo-Spa') === 'true') {
+                $content .= $toolbar;
+            }
+        }
+
+        if ($method === 'GET' && $instance && isset($instance->revalidate)) {
+            $this->cachePage($uri, $content, $instance->revalidate);
+        }
+
+        return $content;
     }
 }

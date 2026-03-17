@@ -14,8 +14,8 @@ class Store {
 
     protected function registerDefaults() {
         $this->setShared('config', function() {
-            $configPath = getcwd() . '/config/rapo.php';
-            return file_exists($configPath) ? require $configPath : ['middleware' => ['guards' => []]];
+            $configPath = getcwd() . '/config';
+            return \Rapo\Config::load($configPath);
         });
         $this->setShared('request', \Rapo\Http\Request::class);
         $this->setShared('response', \Rapo\Http\Response::class);

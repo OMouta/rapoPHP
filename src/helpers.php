@@ -158,3 +158,39 @@ function component(string $class, array $props = [], $children = null): string {
     return $instance->render();
 }
 
+/**
+ * Get configuration value
+ */
+function config(string $key, $default = null) {
+    $config = \Rapo\Store::getDefault()->get('config');
+    if ($config instanceof \Rapo\Config) {
+        return $config->get($key, $default);
+    }
+    return $default;
+}
+
+/**
+ * Log a message
+ */
+function logger($level = null, $message = null, array $context = []) {
+    if ($level === null) {
+        return new \Rapo\Log();
+    }
+    \Rapo\Log::log($level, $message, $context);
+}
+
+/**
+ * Redirect back to previous page
+ */
+function back() {
+    $url = $_SERVER['HTTP_REFERER'] ?? '/';
+    return redirect($url);
+}
+
+/**
+ * Vite asset helper
+ */
+function vite($entry = 'src/Assets/app.js'): string {
+    return \Rapo\Vite::render($entry);
+}
+

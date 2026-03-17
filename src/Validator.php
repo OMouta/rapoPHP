@@ -43,6 +43,37 @@ class Validator {
             case 'max':
                 if (strlen((string)$value) > $params[0]) $this->addError($field, "The $field must not exceed {$params[0]} characters.");
                 break;
+            case 'numeric':
+                if (!is_numeric($value)) $this->addError($field, "The $field must be a number.");
+                break;
+            case 'url':
+                if (!filter_var($value, FILTER_VALIDATE_URL)) $this->addError($field, "The $field must be a valid URL.");
+                break;
+            case 'unique':
+                $table = $params[0];
+                $column = $params[1] ?? $field;
+                $except = $params[2] ?? null;
+                
+                $db = Store::getDefault()->get('db');
+                $sql = "SELECT COUNT(*) as count FROM $table WHERE $column = ?";
+                $dbParams = [$value];
+                
+                if ($except) {
+                    $sql .= " AND id != ?";
+                    $dbParams[] = $except;
+                }
+                
+                $result = $db->fetch($sql, $dbParams);
+                if ($result['count'] > 0) {
+                    $this->addError($field, "The $field has already been taken.");
+                }
+                break;
+            case 'confirmed':
+                $confirmationField = $field . '_confirmation';
+                if ($value !== ($this->data[$confirmationField] ?? null)) {
+                    $this->addError($field, "The $field confirmation does not match.");
+                }
+                break;
         }
     }
 

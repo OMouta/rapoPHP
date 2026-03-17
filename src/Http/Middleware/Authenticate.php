@@ -7,11 +7,10 @@ use Rapo\Http\Request;
 use Rapo\Http\Response;
 
 class Authenticate {
-    public function handle(Request $request, Response $response) {
+    public function handle(Request $request, \Closure $next) {
         if (!Auth::check()) {
-            header("Location: /login");
-            exit;
+            return redirect('/login');
         }
-        return true;
+        return $next($request);
     }
 }

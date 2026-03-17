@@ -64,8 +64,24 @@ class Router {
             if ($this->apiPath && $parts[0] === 'api') {
                 $apiParts = $parts;
                 array_shift($apiParts); // remove 'api'
-                if (empty($apiParts)) $apiParts = [];
                 
+                // Magic Model API support
+                if (isset($apiParts[0]) && $apiParts[0] === 'models') {
+                    array_shift($apiParts);
+                    if (!empty($apiParts)) {
+                        $modelName = ucfirst($apiParts[0]);
+                        $id = $apiParts[1] ?? null;
+                        return [
+                            'handler' => 'magic_api',
+                            'model' => $modelName,
+                            'id' => $id,
+                            'params' => $params,
+                            'is_api' => true
+                        ];
+                    }
+                }
+                
+                if (empty($apiParts)) $apiParts = [];
                 $result = $this->recursiveMatch($this->apiPath, $this->apiNamespace, $apiParts, $params, true, $method);
                 if ($result) {
                     $this->currentParams = $params;
